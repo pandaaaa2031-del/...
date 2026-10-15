@@ -1,122 +1,57 @@
-const fs = require('fs');
-const path = require('path');
-const moment = require('moment-timezone');
-const axios = require('axios');
+const fs = require("fs-extra");
+const request = require("request");
+const path = require("path");
 
 module.exports = {
   config: {
     name: "owner",
-    aliases: ["owner", "own"],
-    version: "2.8",
-    author: "NIROB",
-    countDown: 5,
+    version: "1.3.0",
+    author: "Mᴏʜᴀᴍᴍᴀᴅ Aᴋᴀsʜ",
     role: 0,
-    shortDescription: {
-      vi: "",
-      en: "Sends information about the bot and admin."
-    },
-    longDescription: {
-      vi: "",
-      en: "Sends information about the bot and admin with an image."
-    },
+    shortDescription: "Owner information with image",
     category: "Information",
     guide: {
-      en: "{pn}"
-    },
-    envConfig: {}
-  },
-
-  onStart: async function ({ message }) {
-    await this.sendInfo(message);
-  },
-
-  onChat: async function ({ event, message }) {
-    if (event.body && event.body.toLowerCase() === "info") {
-      await this.sendInfo(message);
+      en: "owner"
     }
   },
 
-  sendInfo: async function (message) {
-    const cachePath = path.join(__dirname, 'cache', 'owner_img.jpg');
+  onStart: async function ({ api, event }) {
+    const ownerText = 
+`╭─ 👑 Oᴡɴᴇʀ Iɴғᴏ 👑 ─╮
+│ 👤 Nᴀᴍᴇ       : SAMI BHAI
+│ 🧸 Nɪᴄᴋ       : 𝐗𝐒𝐘 SAMI
+│ 🎂 Aɢᴇ        : 21+
+│ 💘 Rᴇʟᴀᴛɪᴏɴ : KEW NAI😭
+│ 🎓 Pʀᴏғᴇssɪᴏɴ : 𝗦𝗧𝗨𝗗𝗘𝗡𝗧
+│ 📚 Eᴅᴜᴄᴀᴛɪᴏɴ : HONOURS 2ND
+│ 🏡 Lᴏᴄᴀᴛɪᴏɴ : DHAKA, GULSHAN 
+├─ 🔗 Cᴏɴᴛᴀᴄᴛ ─╮
+│ 📘 Facebook  : Sami Ahmed 
+│ 💬 Messenger: https://m.me/sami.ahmed.721296
+│ 📞 WhatsApp  : wa.me/01823713382
+╰────────────────╯`;
 
-    try {
-      const botName = "𝗧𝗢𝗡𝗡𝗜 𝗕𝗢𝗧";
-      const botPrefix = "/";
-      const authorName = "𝐒𝐀𝐌𝐈 𝐀𝐇𝐌𝐄𝐃";
-      const authorFB = "https://facebook.com/hatake.kakashi.NN";
-      const authorInsta = "U.R.GAY";
-      const status = "𝚂𝚒𝚗𝚐𝚕𝚎";
-      
-      // Direct Imgur Image URL
-      const imageUrl = "https://i.imgur.com/f775wuO.jpeg"; 
+    const cacheDir = path.join(__dirname, "cache");
+    const imgPath = path.join(cacheDir, "owner.jpg");
 
-      const now = moment().tz('Asia/Dhaka');
-      const time = now.format('hh:mm:ss A');
-      const date = now.format('DD/MM/YYYY');
+    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
 
-      const uptime = process.uptime();
-      const seconds = Math.floor(uptime % 60);
-      const minutes = Math.floor((uptime / 60) % 60);
-      const hours = Math.floor((uptime / (60 * 60)) % 24);
-      const days = Math.floor(uptime / (60 * 60 * 24));
-      const uptimeString = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    const imgLink = "https://files.catbox.moe/bg781r.jpg";
 
-      const responseText = 
-`░▒▓█ 🤖 BOT & OWNER SYSTEM INFO █▓▒░
+    const send = () => {
+      api.sendMessage(
+        {
+          body: ownerText,
+          attachment: fs.createReadStream(imgPath)
+        },
+        event.threadID,
+        () => fs.unlinkSync(imgPath),
+        event.messageID
+      );
+    };
 
- ┌─[ 👑 ADMIN INFO ]
- ├─► 👤 Name       : ${authorName}
- ├─► 📘 Facebook   : ${authorFB}
- ├─► 📸 Instagram  : ${authorInsta}
- └─► 💖 Status     : 𝚂𝚒𝚗𝚐𝚕𝚎
-
- ┌─[ ⚡ BOT SYSTEM ]
- ├─► 🤖 Bot Name   : ${botName}
- ├─► ⚙️ Prefix     : [ ${botPrefix} ]
- ├─► ⏰ Time       : ${time}
- ├─► 📅 Date       : ${date}
- └─► ⏳ Uptime     : ${uptimeString}
-
-░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░`;
-
-      // Cache folder check & create
-      const cacheDir = path.join(__dirname, 'cache');
-      if (!fs.existsSync(cacheDir)) {
-        fs.mkdirSync(cacheDir, { recursive: true });
-      }
-
-      // Download image with stream headers
-      const response = await axios({
-        method: 'GET',
-        url: imageUrl,
-        responseType: 'stream',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-        }
-      });
-
-      const writer = fs.createWriteStream(cachePath);
-      response.data.pipe(writer);
-
-      writer.on('finish', async () => {
-        await message.reply({
-          body: responseText,
-          attachment: fs.createReadStream(cachePath)
-        });
-        // Delete temporary cache image
-        if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
-      });
-
-      writer.on('error', async (err) => {
-        console.error("Stream error:", err);
-        await message.reply(responseText);
-      });
-
-    } catch (err) {
-      console.error("❌ Error in owner command:", err);
-      // Fallback response if image fails
-      if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
-      return message.reply("❌ Error occurred while sending owner info.");
-    }
+    request(encodeURI(imgLink))
+      .pipe(fs.createWriteStream(imgPath))
+      .on("close", send);
   }
 };
