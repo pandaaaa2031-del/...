@@ -1,57 +1,51 @@
+!cmd install owner.js const axios = require("axios");
 const fs = require("fs-extra");
-const request = require("request");
 const path = require("path");
 
 module.exports = {
   config: {
     name: "owner",
-    version: "1.3.0",
-    author: "Mᴏʜᴀᴍᴍᴀᴅ Aᴋᴀsʜ",
+    version: "1.0",
+    author: "𝐗𝐒𝐘 𝐒𝐇𝐀𝐍𝐓𝐎",
+    countDown: 5,
     role: 0,
-    shortDescription: "Owner information with image",
-    category: "Information",
-    guide: {
-      en: "owner"
-    }
+    shortDescription: "Show owner info",
+    longDescription: "Show owner information",
+    category: "info",
+    guide: "{pn}",
+    aliases: ["infoowner", "ownerinfo"]
   },
 
-  onStart: async function ({ api, event }) {
-    const ownerText = 
-`╭─ 👑 Oᴡɴᴇʀ Iɴғᴏ 👑 ─╮
-│ 👤 Nᴀᴍᴇ       : SAMI BHAI
-│ 🧸 Nɪᴄᴋ       : 𝐗𝐒𝐘 SAMI
-│ 🎂 Aɢᴇ        : 21+
-│ 💘 Rᴇʟᴀᴛɪᴏɴ : KEW NAI😭
+  onStart: async function ({ message }) {
+    const ownerInfo = `
+╭─ 👑 Oᴡɴᴇʀ Iɴғᴏ 👑 ─╮
+│ 👤 Nᴀᴍᴇ : 𝗦𝗔𝗠𝗜 𝗕𝗛𝗔𝗜
+│ 🧸 Nɪᴄᴋ : 𝐗𝐒𝐘 𝗦𝗔𝗠𝗜
+│ 🎂 Aɢᴇ : 𝟮𝟭+
+│ 💘 Rᴇʟᴀᴛɪᴏɴ : 𝗞𝗘𝗪 𝗡𝗔𝗜😢
 │ 🎓 Pʀᴏғᴇssɪᴏɴ : 𝗦𝗧𝗨𝗗𝗘𝗡𝗧
-│ 📚 Eᴅᴜᴄᴀᴛɪᴏɴ : HONOURS 2ND
-│ 🏡 Lᴏᴄᴀᴛɪᴏɴ : DHAKA, GULSHAN 
+│ 📚 Eᴅᴜᴄᴀᴛɪᴏɴ : 𝗛𝗢𝗡𝗢𝗨𝗥𝗦 𝟮𝗡𝗗
+│ 🏡 Lᴏᴄᴀᴛɪᴏɴ : 𝗗𝗛𝗔𝗞𝗔 - 𝗚𝗨𝗟𝗦𝗛𝗔𝗡
 ├─ 🔗 Cᴏɴᴛᴀᴄᴛ ─╮
-│ 📘 Facebook  : Sami Ahmed 
+│ 📘 Facebook :  SAMI AHMED 
 │ 💬 Messenger: https://m.me/sami.ahmed.721296
-│ 📞 WhatsApp  : wa.me/01823713382
-╰────────────────╯`;
+│ 📞 WhatsApp : wa.me/01823714382
+╰────────────────`;
 
-    const cacheDir = path.join(__dirname, "cache");
-    const imgPath = path.join(cacheDir, "owner.jpg");
+    const imgUrl = "https://files.catbox.moe/w06hy7.jpg";
+    const imgPath = path.join(__dirname, "cache", "owner.jpg");
 
-    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
+    try {
+      const res = await axios.get(imgUrl, { responseType: "arraybuffer" });
+      await fs.ensureDir(path.dirname(imgPath));
+      await fs.writeFile(imgPath, res.data);
 
-    const imgLink = "https://files.catbox.moe/bg781r.jpg";
-
-    const send = () => {
-      api.sendMessage(
-        {
-          body: ownerText,
-          attachment: fs.createReadStream(imgPath)
-        },
-        event.threadID,
-        () => fs.unlinkSync(imgPath),
-        event.messageID
-      );
-    };
-
-    request(encodeURI(imgLink))
-      .pipe(fs.createWriteStream(imgPath))
-      .on("close", send);
+      return message.reply({
+        body: ownerInfo,
+        attachment: fs.createReadStream(imgPath)
+      });
+    } catch {
+      return message.reply(ownerInfo);
+    }
   }
 };
