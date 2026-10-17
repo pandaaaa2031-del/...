@@ -3,16 +3,14 @@ const axios = require("axios");
 module.exports = {
   config: {
     name: "4k",
-    version: "1.0.2",
+    version: "1.0.4",
     author: "Sami Bhai",
     countDown: 5,
     role: 0,
-    shortDescription: "Enhance image to 4K quality",
-    longDescription: "Enhance image resolution using AI",
+    shortDescription: "4K Image Enhancer",
+    longDescription: "Enhance image resolution to 4K quality",
     category: "media",
-    guide: {
-      en: "{p}4k [reply to an image]"
-    }
+    guide: { en: "{p}4k [reply to photo]" }
   },
 
   onStart: async function ({ api, event, message }) {
@@ -23,46 +21,29 @@ module.exports = {
 
       const attachment = event.messageReply.attachments[0];
       if (attachment.type !== "photo") {
-        return message.reply("❌ সামি ভাই বললেন: এটি ছবির জন্য প্রযোজ্য, অন্য কোনো ফাইলের জন্য নয়।");
+        return message.reply("❌ সামি ভাই বললেন: এটি শুধুমাত্র ছবির জন্য কাজ করবে।");
       }
 
       const imageUrl = attachment.url;
-      message.reply("⏳ সামি ভাইয়ের ৪K এডিট বোট ছবিটিকে HD/4K কোয়ালিটিতে কনভার্ট করছে, একটু অপেক্ষা করুন...");
+      message.reply("⏳ সামি ভাইয়ের ৪K এডিট বোট কাজ করছে, একটু অপেক্ষা করুন...");
 
-      // Backup APIs List
-      const apis = [
-        `https://betadash-uploader.onrender.com/upscale?url=${encodeURIComponent(imageUrl)}`,
-        `https://api.vyturex.com/upscale?url=${encodeURIComponent(imageUrl)}`,
-        `https://nams.live/upscale.php?url=${encodeURIComponent(imageUrl)}`
-      ];
+      // Working Upscale API
+      const response = await axios.get(`https://api.siputzx.my.id/api/tools/remini?url=${encodeURIComponent(imageUrl)}`, {
+        responseType: "arraybuffer"
+      });
 
-      let enhancedImgUrl = null;
-
-      for (const url of apis) {
-        try {
-          const res = await axios.get(url, { timeout: 15000 });
-          if (res.data && (res.data.content || res.data.result || res.data.url)) {
-            enhancedImgUrl = res.data.content || res.data.result || res.data.url;
-            break; // Working API found, exit loop
-          }
-        } catch (e) {
-          continue; // Try next API if this one fails
-        }
-      }
-
-      if (enhancedImgUrl) {
-        const imageStream = (await axios.get(enhancedImgUrl, { responseType: "stream" })).data;
+      if (response.data) {
         return message.reply({
           body: "✨ সামি ভাইয়ের ৪K এডিটিং সম্পূর্ণ হয়েছে! 🔥",
-          attachment: imageStream
+          attachment: Buffer.from(response.data)
         });
       } else {
-        return message.reply("❌ সামি ভাই দুঃখিত! এই মুহূর্তে সার্ভার বিজি থাকায় ছবি ৪K করা যাচ্ছে না। কিছুক্ষণ পর চেষ্টা করুন।");
+        return message.reply("❌ সামি ভাই দুঃখিত! এই মুহূর্তে ছবিটি ৪K করা সম্ভব হয়নি।");
       }
     } catch (error) {
       console.error(error);
-      return message.reply("❌ সামি ভাইয়ের সিস্টেমে কোনো সমস্যা ঘটেছে।");
+      return message.reply("❌ সামি ভাইয়ের সার্ভার বা API-তে সমস্যা হয়েছে। অন্য একটি ছবি চেষ্টা করুন।");
     }
   }
 };
-      
+        
