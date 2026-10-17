@@ -3,7 +3,7 @@ const axios = require("axios");
 module.exports = {
   config: {
     name: "4k",
-    version: "1.0.4",
+    version: "1.0.5",
     author: "Sami Bhai",
     countDown: 5,
     role: 0,
@@ -27,23 +27,42 @@ module.exports = {
       const imageUrl = attachment.url;
       message.reply("⏳ সামি ভাইয়ের ৪K এডিট বোট কাজ করছে, একটু অপেক্ষা করুন...");
 
-      // Working Upscale API
-      const response = await axios.get(`https://api.siputzx.my.id/api/tools/remini?url=${encodeURIComponent(imageUrl)}`, {
-        responseType: "arraybuffer"
-      });
+      // Multi-API Backup Loop for 100% Reliability
+      const apis = [
+        `https://api.vyturex.com/upscale?url=${encodeURIComponent(imageUrl)}`,
+        `https://kaiz-apis.gleeze.com/api/remini?url=${encodeURIComponent(imageUrl)}`,
+        `https://api.genz-api.xyz/api/upscale?url=${encodeURIComponent(imageUrl)}`
+      ];
 
-      if (response.data) {
+      let imgStream = null;
+
+      for (const apiUri of apis) {
+        try {
+          const res = await axios.get(apiUri, { timeout: 20000 });
+          const finalUrl = res.data.url || res.data.result || res.data.image_url || res.data.content;
+          
+          if (finalUrl) {
+            const streamRes = await axios.get(finalUrl, { responseType: "stream" });
+            imgStream = streamRes.data;
+            break;
+          }
+        } catch (err) {
+          continue; // Next API attempt
+        }
+      }
+
+      if (imgStream) {
         return message.reply({
           body: "✨ সামি ভাইয়ের ৪K এডিটিং সম্পূর্ণ হয়েছে! 🔥",
-          attachment: Buffer.from(response.data)
+          attachment: imgStream
         });
       } else {
-        return message.reply("❌ সামি ভাই দুঃখিত! এই মুহূর্তে ছবিটি ৪K করা সম্ভব হয়নি।");
+        return message.reply("❌ সামি ভাই দুঃখিত! অন্য একটি ছবি দিয়ে চেষ্টা করুন।");
       }
     } catch (error) {
       console.error(error);
-      return message.reply("❌ সামি ভাইয়ের সার্ভার বা API-তে সমস্যা হয়েছে। অন্য একটি ছবি চেষ্টা করুন।");
+      return message.reply("❌ সামি ভাইয়ের প্রসেসিংয়ে সমস্যা হয়েছে।");
     }
   }
 };
-        
+          
