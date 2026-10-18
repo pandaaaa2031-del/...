@@ -1,38 +1,74 @@
-const fs = require('fs');
-const path = require('path');
-const ytdl = require('ytdl-core'); // ইউটিউব থেকে অডিও ডাউনলোডের জন্য
-const ytSearch = require('yt-search'); // ইউটিউবে গান সার্চ করার জন্য
+const axios = require("axios");
+const fs = require("fs-extra");
+const path = require("path");
 
-module.exports = {
+module.exports.config = {
     name: "sing",
-    description: "ಯೂಟ್ಯೂব থেকে গান সার্চ করে অডিও পাঠায়",
-    async execute(api, event, args) {
-        const { threadID, messageID } = event;
-        const songName = args.join(" ");
+    version: "1.0.0",
+    hasPermssion: 0,
+    credits: "Developer",
+    description: "ইউটিউব থেকে গান খুঁজে অডিও হিসেবে পাঠায়",
+    commandCategory: "media",
+    usages: "[গানের নাম]",
+    cooldowns: 5
+};
 
-        if (!songName) {
-            return api.sendMessage("অনুগ্রহ করে কোনো গানের নাম লিখুন। যেমন: `!sing By Your Side`", threadID, messageID);
+module.exports.run = async function({ api, event, args }) {
+    const { threadID, messageID } = event;
+    const songName = args.join(" ");
+
+    if (!songName) {
+        return api.sendMessage("❌ অনুগ্রহ করে কোনো গানের নাম লিখুন।\nউদাহরণ: !sing Tum Hi Ho", threadID, messageID);
+    }
+
+    api.sendMessage(`🔍 "${songName}" গানটি খোঁজা হচ্ছে, একটু অপেক্ষা করুন...`, threadID, messageID);
+
+    try {
+        // Popcat API দিয়ে গান সার্চ ও ডাউনলোড
+        const res = await axios.get(`https://api.popcat.xyz/v2/ytplay?q=${encodeURIComponent(songName)}`);
+        
+        if (!res.data || !res.data.url) {
+            return api.sendMessage("❌ দুঃখিত, গানটি খুঁজে পাওয়া যায়নি।", threadID, messageID);
         }
 
-        api.sendMessage(`🔍 "${songName}" খোঁজ করা হচ্ছে, একটু অপেক্ষা করুন...`, threadID);
+        const songData = res.data;
+        const cacheDir = path.join(__dirname, "cache");
 
-        try {
-            // ১. ইউটিউবে গান সার্চ করা
-            const searchResult = await ytSearch(songName);
-            const song = searchResult.videos[0];
-
-            if (!song) {
-                return api.sendMessage("দুঃখিত, এই নামের কোনো গান পাওয়া যায়নি।", threadID, messageID);
-            }
-
-            api.sendMessage(`🎵 বাজছে: ${song.title}\n🔗 লিংক: ${song.url}`, threadID);
-
-            // ২. অডিও ফাইল ডাউনলোড করে পাঠানো (বিকল্প হিসেবে শুধু লিংকও পাঠাতে পারেন)
-            // নোটিশ: ফেসবুক মেসেঞ্জারে বড় অডিও ফাইল পাঠাতে সমস্যা হতে পারে, তাই অনেক ডেভেলপার সরাসরি ইউটিউব লিংক বা অডিও ফাইল স্ট্রিম করেন।
-            
-        } catch (error) {
-            console.error(error);
-            api.sendMessage("গানটি চালাতে গিয়ে একটি সমস্যা হয়েছে।", threadID, messageID);
+        // ক্যাশ ফোল্ডার না থাকলে বানিয়ে নেবে
+        if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
         }
+
+        const cachePath = path.join(cacheDir, `${Date.now()}_sing.mp3`);
+
+        // অডিও ফাইল স্ট্রিম ডাউনলোড
+        const audioStream = await axios({
+            method: "get",
+            url: songData.url,
+            responseType: "stream"
+        });
+
+        const writer = fs.createWriteStream(cachePath);
+        audioStream.data.pipe(writer);
+
+        writer.on("finish", () => {
+            api.sendMessage({
+                body: `🎶 **গানের নাম:** ${songData.title || songName}\n👤 **চ্যানেল:** ${songData.channel || "YouTube"}`,
+                attachment: fs.createReadStream(cachePath)
+            }, threadID, () => {
+                // ফাইল পাঠানো শেষে ডিলিট করা
+                if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
+            }, messageID);
+        });
+
+        writer.on("error", (err) => {
+            console.error(err);
+            api.sendMessage("❌ গান ডাউনলোড করতে সমস্যা হয়েছে।", threadID, messageID);
+        });
+
+    } catch (error) {
+        console.error(error);
+        api.sendMessage("❌ সার্ভারে সমস্যা হচ্ছে, পরে আবার চেষ্টা করুন।", threadID, messageID);
     }
 };
+                                    
