@@ -7,9 +7,9 @@ module.exports.config = {
     version: "1.0.0",
     hasPermssion: 0,
     credits: "Developer",
-    description: "ইউটিউব থেকে গান খুঁজে অডিও হিসেবে পাঠায়",
+    description: "YouTube theke gan khuje audio hisebe pathay",
     commandCategory: "media",
-    usages: "[গানের নাম]",
+    usages: "[ganer nam]",
     cooldowns: 5
 };
 
@@ -18,16 +18,16 @@ module.exports.run = async function({ api, event, args }) {
     const songName = args.join(" ");
 
     if (!songName) {
-        return api.sendMessage("❌ অনুগ্রহ করে গানের নাম লিখুন।\nউদাহরণ: !sing Tum Hi Ho", threadID, messageID);
+        return api.sendMessage("❌ Onugroh kore kono ganer nam likhun.\nUdahoron: !sing Tum Hi Ho", threadID, messageID);
     }
 
-    api.sendMessage(`🔍 "${songName}" গানটি খোঁজা হচ্ছে...`, threadID, messageID);
+    api.sendMessage(`🔍 "${songName}" gan ti khoja hochhe, ektu opekkha korun...`, threadID, messageID);
 
     try {
         const res = await axios.get(`https://api.popcat.xyz/v2/ytplay?q=${encodeURIComponent(songName)}`);
         
         if (!res.data || !res.data.url) {
-            return api.sendMessage("❌ গানটি খুঁজে পাওয়া যায়নি।", threadID, messageID);
+            return api.sendMessage("❌ Dukhito, gan ti khuje paowa jayni.", threadID, messageID);
         }
 
         const songData = res.data;
@@ -50,18 +50,21 @@ module.exports.run = async function({ api, event, args }) {
 
         writer.on("finish", () => {
             api.sendMessage({
-                body: `🎶 **গানের নাম:** ${songData.title || songName}`,
+                body: `🎶 **Ganer Nam:** ${songData.title || songName}\n👤 **Channel:** ${songData.channel || "YouTube"}`,
                 attachment: fs.createReadStream(cachePath)
             }, threadID, () => {
                 if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
             }, messageID);
         });
 
-        writer.on("error", () => {
-            api.sendMessage("❌ ডাউনলোড সমস্যা হয়েছে।", threadID, messageID);
+        writer.on("error", (err) => {
+            console.error(err);
+            api.sendMessage("❌ Gan download korte somossa hoyeche.", threadID, messageID);
         });
 
     } catch (error) {
-        api.sendMessage("❌ সার্ভার সমস্যা!", threadID, messageID);
+        console.error(error);
+        api.sendMessage("❌ Server-e somossa hochhe, pore abar chesta korun.", threadID, messageID);
     }
 };
+                            
