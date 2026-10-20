@@ -6,168 +6,89 @@ const { pipeline } = require("stream/promises");
 const cacheDir = path.join(__dirname, "cache");
 if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
 
-const MAX_SIZE = 25 * 1024 * 1024;
+const MAX_SIZE = 25 * 1024 * 1024; // Messenger attachment limit
 
 const API_JSON =
   "https://raw.githubusercontent.com/MR-MAHABUB-004/MAHABUB-BOT-STORAGE/refs/heads/main/APIURL.json";
 
-// ------------------------------------------------------------
-// Download headers (same browser fingerprint as the ytmp3v3 API).
-// NOTE: "accept-encoding" is intentionally NOT set. Asking for zstd/br
-// can return a compressed body axios can't decode -> corrupted mp3.
-// ------------------------------------------------------------
-const MOBILE_UA =
-  "Mozilla/5.0 (Linux; Android 13; TECNO BG7 Build/TP1A.220624.014) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.8037.107 Mobile Safari/537.36";
-
-const BASE_DL_HEADERS = {
-  "sec-ch-ua": '"Chromium";v="154", "Android WebView";v="154", "Not A(Brand";v="99"',
-  "sec-ch-ua-mobile": "?1",
-  "sec-ch-ua-platform": '"Android"',
-  "upgrade-insecure-requests": "1",
-  "user-agent": MOBILE_UA,
-  accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-  "x-requested-with": "mark.via.gp",
-  "sec-fetch-site": "cross-site",
-  "sec-fetch-mode": "navigate",
-  "sec-fetch-user": "?1",
-  "sec-fetch-dest": "iframe",
-  "accept-language": "en-US,en;q=0.9"
+const DL_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+  Accept: "*/*"
 };
-
-// Tried in order until one works.
-const DL_HEADER_PROFILES = [
-  { ...BASE_DL_HEADERS, referer: "https://ytmp4.blog/" },
-  { ...BASE_DL_HEADERS, referer: "https://api.ytmp3.tube/" }
-];
 
 let API_CACHE = null;
 
 async function getApiConfig() {
   if (API_CACHE) return API_CACHE;
-
-  const response = await axios.get(API_JSON, { timeout: 15000 });
-
-  if (!response.data || typeof response.data !== "object") {
-    throw new Error("API config invalid");
-  }
-
-  API_CACHE = response.data;
+  const res = await axios.get(API_JSON, { timeout: 15000 });
+  if (!res.data || typeof res.data !== "object") throw new Error("API config invalid");
+  API_CACHE = res.data;
   return API_CACHE;
 }
 
-// kind "mp3"    -> apiv2 first (hosts /mahabub/ytmp3v3), then api
-// kind "search" -> api first, then apiv2
-async function getBaseApi(kind = "search") {
-  const config = await getApiConfig();
-  const value =
-    kind === "mp3" ? config.apiv2 || config.api : config.api || config.apiv2;
-
-  if (!value) throw new Error("API URL not found in APIURL.json");
-
-  return String(value).replace(/\/+$/, "");
+// Audio download API: cfg.ytmp3 -> BASE/ytmp3v4?url=<youtube url>
+async function getBaseApi() {
+  const cfg = await getApiConfig();
+  if (!cfg.ytmp3) throw new Error("ytmp3 API URL not found");
+  return String(cfg.ytmp3).replace(/\/+$/, "");
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Search API: cfg.api  (called as BASE/mahabub/ytsearch?q=<query>)
+async function getSearchApi() {
+  const cfg = await getApiConfig();
+  if (!cfg.api) throw new Error("search API URL not found");
+  return String(cfg.api).replace(/\/+$/, "");
+}
 
-function getErrorBody(error) {
-  const data = error?.response?.data;
-  if (!data || typeof data.pipe === "function") return "";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Safe error-body printer (stream bodies are skipped)
+const errBody = (err) => {
+  const d = err?.response?.data;
+  if (!d || typeof d.pipe === "function") return "";
   try {
-    return typeof data === "string"
-      ? data.slice(0, 300)
-      : JSON.stringify(data).slice(0, 300);
+    return typeof d === "string" ? d.slice(0, 300) : JSON.stringify(d).slice(0, 300);
   } catch {
     return "";
   }
-}
+};
 
-// ============================================================
-// YTMP3V3 API
-// Endpoint: BASE/mahabub/ytmp3v3?url=
-// ============================================================
-
-async function fetchMp3Link(BASE, youtubeUrl) {
-  const apiUrl = `${BASE}/mahabub/ytmp3v3?url=${encodeURIComponent(youtubeUrl)}`;
-
-  let lastError = null;
-
+// Call ytmp3v4 API with retry -> returns the full response object
+// Response: { status, title, author, videoId, filesize, download_url, expires_in, ... }
+async function fetchMp3Link(MP3_API, youtubeUrl) {
+  const apiUrl = `${MP3_API}/ytmp3v4?url=${encodeURIComponent(youtubeUrl)}`;
+  let lastErr = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const response = await axios.get(apiUrl, {
-        timeout: 130000,
-        headers: { "User-Agent": MOBILE_UA, Accept: "application/json" }
-      });
-
-      const data = response.data;
-
-      if (!data || typeof data !== "object") {
-        throw new Error("Invalid API response");
+      const { data } = await axios.get(apiUrl, { timeout: 120000 });
+      if (data?.status === "success" && /^https?:\/\//i.test(data?.download_url || "")) {
+        return data;
       }
-
-      const downloadUrls = [
-        data.download_url,
-        data.data?.download_url,
-        data.downloadUrl,
-        data.data?.downloadUrl,
-        data.downloadLink,
-        data.data?.downloadLink
-      ].filter(
-        (url, index, array) =>
-          typeof url === "string" &&
-          /^https?:\/\//i.test(url) &&
-          array.indexOf(url) === index
-      );
-
-      if (data.status === "success" && downloadUrls.length > 0) {
-        console.log(
-          "[SING] API success:",
-          data.title || "Unknown",
-          "| Bitrate:",
-          data.bitrate || "Unknown"
-        );
-        return { urls: downloadUrls, info: data };
-      }
-
-      lastError = new Error(
-        data.message || data.error || "API returned no valid download_url"
-      );
-
+      lastErr = new Error(data?.message || "API returned no download link");
+      console.error("[SING] Invalid API response:", JSON.stringify(data)?.slice(0, 500));
+    } catch (e) {
+      lastErr = e;
       console.error(
-        "[SING] Invalid API response:",
-        JSON.stringify(data).slice(0, 500)
-      );
-    } catch (error) {
-      lastError = error;
-
-      console.error(
-        `[SING] ytmp3v3 attempt ${attempt} failed:`,
-        error.response?.status || error.code || "",
-        error.message,
-        getErrorBody(error)
+        `[SING] ytmp3v4 attempt ${attempt} failed:`,
+        e?.response?.status || e?.code || "",
+        e?.message
       );
     }
-
     if (attempt < 3) await sleep(attempt * 3000);
   }
-
-  throw lastError || new Error("Unable to get MP3 download URL");
+  throw lastErr;
 }
-
-// ============================================================
-// COMMAND
-// ============================================================
 
 module.exports = {
   config: {
     name: "sing",
-    version: "6.1",
-    author: "MAHABUB",
+    version: "5.5",
+    author: "@𝐌𝐑᭄﹅ 𝐌𝐀𝐇𝐀𝐁𝐔𝐁﹅ メꪜ",
     countDown: 5,
     role: 0,
     longDescription: {
-      en: "Search songs, reply with a number, and download MP3 audio."
+      en: "🎶 Search song → reply number → auto download → auto unsend → auto delete"
     },
     category: "media",
     guide: {
@@ -178,11 +99,10 @@ module.exports = {
   // ============================================================
   // SONG SEARCH
   // ============================================================
-
   onStart: async ({ api, args, event }) => {
     if (!args.length) {
       return api.sendMessage(
-        "❌ Song name dao!\n\n📌 Example:\nsing toh phir aao",
+        "❌ **Song name dao na!**\n\n📌 Example:\n➤ `sing toh phir aao`",
         event.threadID,
         event.messageID
       );
@@ -191,126 +111,101 @@ module.exports = {
     api.setMessageReaction("⏳", event.messageID, () => {}, true);
 
     try {
-      const BASE = await getBaseApi("search");
+      const BASE = await getSearchApi();
+      const query = encodeURIComponent(args.join(" "));
 
-      const response = await axios.get(`${BASE}/mahabub/ytsearch`, {
-        params: { q: args.join(" ") },
+      const response = await axios.get(`${BASE}/mahabub/ytsearch?q=${query}`, {
         timeout: 30000
       });
-
       const data = response.data;
+      console.log("[SING] Search response:", JSON.stringify(data)?.slice(0, 1500));
 
-      console.log("[SING] Search response:", JSON.stringify(data).slice(0, 1000));
-
-      const pick = (value) =>
+      const pick = (d) =>
         [
-          value?.videos,
-          value?.data?.videos,
-          value?.results,
-          value?.data?.results,
-          value?.data,
-          value?.result,
-          value?.data?.data,
-          value?.items,
-          Array.isArray(value) ? value : null
-        ].find((item) => Array.isArray(item) && item.length > 0);
+          d?.videos,
+          d?.data?.videos,
+          d?.results,
+          d?.data?.results,
+          d?.data,
+          d?.result,
+          d?.data?.data,
+          d?.items,
+          Array.isArray(d) ? d : null
+        ].find((x) => Array.isArray(x) && x.length > 0);
 
       const rawList = pick(data);
 
       if (!rawList) {
         api.setMessageReaction("❌", event.messageID, () => {}, true);
-
         return api.sendMessage(
-          "🚫 No songs found!\nTry another keyword 🎧",
-          event.threadID,
-          event.messageID
+          "🚫 **No results found!**\nTry another keyword 🎧",
+          event.threadID
         );
       }
 
-      const results = rawList.slice(0, 10).map((item) => {
-        const url = item.url || item.link || "";
-
-        const match =
-          url.match(/[?&]v=([\w-]{11})/) ||
+      const results = rawList.slice(0, 10).map((it) => {
+        const url = it.url || it.link || "";
+        const idFromUrl = (url.match(/[?&]v=([\w-]{11})/) ||
           url.match(/youtu\.be\/([\w-]{11})/) ||
-          url.match(/youtube\.com\/shorts\/([\w-]{11})/);
-
+          [])[1];
         return {
-          ...item,
-          videoId:
-            item.videoId ||
-            item.video_id ||
-            (typeof item.id === "string" ? item.id : item.id?.videoId) ||
-            match?.[1],
-          title: item.title || item.name || "Unknown Song",
-          author: item.author || item.channel?.name || item.channel || "",
-          thumbnail:
-            item.thumbnail ||
-            item.thumbnails?.high?.url ||
-            item.thumbnails?.medium?.url ||
-            item.thumbnails?.default?.url ||
-            item.thumb ||
-            item.image
+          ...it,
+          videoId: it.videoId || it.video_id || it.id || idFromUrl,
+          title: it.title || it.name || "Unknown",
+          thumbnail: it.thumbnail || it.thumb || it.image
         };
       });
 
       let body =
-        "🎧✨ SONG SEARCH RESULTS ✨🎧\n" +
+        "🎧✨ **SONG SEARCH RESULTS** ✨🎧\n" +
         "━━━━━━━━━━━━━━━━━━━\n" +
-        `🔎 Query: ${data.query || args.join(" ")}\n\n`;
+        `🔎 **Query:** ${data.query || args.join(" ")}\n\n`;
 
-      results.forEach((item, index) => {
-        const meta = [item.duration, item.author].filter(Boolean).join(" • ");
-
-        body += `🎵 ${index + 1}. ${item.title}\n`;
-        if (meta) body += `   ${meta}\n`;
-        body += "\n";
+      results.forEach((item, i) => {
+        const meta = [item.duration && `⏱ ${item.duration}`, item.author]
+          .filter(Boolean)
+          .join(" • ");
+        body += `🎵 **${i + 1}.** ${item.title}\n`;
+        if (meta) body += `     ${meta}\n`;
       });
 
-      body +=
-        "━━━━━━━━━━━━━━━━━━━\n" +
-        `📝 Reply with a number (1-${results.length})\n` +
-        "⬇️ To download MP3 audio";
-
-      // A single failed thumbnail will not stop the search.
       const thumbs = await Promise.all(
         results.map(async (item) => {
-          if (!item.thumbnail) return null;
-
+          const thumbnail =
+            item?.thumbnails?.high ||
+            item?.thumbnails?.medium ||
+            item?.thumbnails?.default ||
+            item?.thumbnail;
+          if (!thumbnail) return null;
           try {
-            const image = await axios.get(item.thumbnail, {
-              responseType: "arraybuffer",
-              timeout: 12000,
-              maxContentLength: 3 * 1024 * 1024
+            const image = await axios.get(thumbnail, {
+              responseType: "stream",
+              timeout: 15000
             });
-
-            const contentType = String(
-              image.headers["content-type"] || ""
-            ).toLowerCase();
-
-            if (!contentType.startsWith("image/")) return null;
-
-            return Buffer.from(image.data);
-          } catch {
+            return image.data;
+          } catch (err) {
             return null;
           }
         })
       );
-
       const attachments = thumbs.filter(Boolean);
 
-      const message = { body };
-      if (attachments.length) message.attachment = attachments;
+      body +=
+        "\n━━━━━━━━━━━━━━━━━━━\n" +
+        `📝 **Reply with a number (1-${results.length})**\n` +
+        "⬇️ To download audio 🎶";
 
       api.sendMessage(
-        message,
+        {
+          body,
+          attachment: attachments.length > 0 ? attachments : undefined
+        },
         event.threadID,
-        (error, info) => {
-          if (error) {
-            console.error("[SING] Search message error:", error);
+        (err, info) => {
+          if (err) {
+            console.error("Search message error:", err);
             return;
           }
-
           if (!info?.messageID) return;
 
           global.GoatBot.onReply.set(info.messageID, {
@@ -324,28 +219,184 @@ module.exports = {
       );
 
       api.setMessageReaction("🎶", event.messageID, () => {}, true);
-    } catch (error) {
-      console.error(
-        "[SING] SEARCH ERROR:",
-        error.response?.status || "",
-        error.message
-      );
-
+    } catch (err) {
+      console.error("SONG SEARCH ERROR:", err?.response?.status, err?.message);
       api.setMessageReaction("❌", event.messageID, () => {}, true);
-
-      api.sendMessage(
-        "❌ Song search failed!\nPlease try again later.",
-        event.threadID,
-        event.messageID
-      );
+      api.sendMessage("❌ **Search failed!**\nTry again later.", event.threadID);
     }
   },
 
   // ============================================================
   // REPLY HANDLER
   // ============================================================
-
   onReply: async ({ api, event, Reply }) => {
+    if (String(event.senderID) !== String(Reply.author)) return;
+
+    const choice = parseInt(String(event.body || "").trim(), 10);
+
+    if (Number.isNaN(choice) || choice < 1 || choice > Reply.results.length) {
+      api.setMessageReaction("❌", event.messageID, () => {}, true);
+      return api.sendMessage(
+        "⚠️ **Invalid number!**\n" + `Reply between 1-${Reply.results.length} 🔢`,
+        event.threadID,
+        event.messageID
+      );
+    }
+
+    if (Reply.searchMsgID) {
+      try {
+        api.unsendMessage(Reply.searchMsgID);
+      } catch (err) {
+        console.error("Unsend search message error:", err);
+      }
+    }
+
+    const video = Reply.results[choice - 1];
+    const videoId = video?.videoId || video?.id;
+
+    if (!videoId) {
+      api.setMessageReaction("❌", event.messageID, () => {}, true);
+      return api.sendMessage("❌ **Video ID not found!**", event.threadID);
+    }
+
+    const youtubeUrl = `https://youtube.com/watch?v=${videoId}`;
+    api.setMessageReaction("⏳", event.messageID, () => {}, true);
+
+    let filePath = null;
+    const cleanup = () => {
+      if (filePath && fs.existsSync(filePath)) fs.unlink(filePath, () => {});
+    };
+
+    // Reject JSON/HTML error bodies saved as media
+    const looksLikeError = (file) => {
+      const size = fs.statSync(file).size;
+      if (size > 50 * 1024) return false;
+      const head = fs.readFileSync(file, { encoding: "utf8" }).slice(0, 200).trim();
+      return /^[{<]/.test(head) || /error|expired|forbidden/i.test(head);
+    };
+
+    const downloadFile = async (url, ext, safeId) => {
+      const r = await axios.get(url, {
+        responseType: "stream",
+        timeout: 180000,
+        maxRedirects: 5,
+        headers: DL_HEADERS,
+        validateStatus: (s) => s >= 200 && s < 300
+      });
+
+      const ctype = String(r.headers["content-type"] || "").toLowerCase();
+      if (/text\/html|application\/json/.test(ctype)) {
+        r.data.destroy();
+        throw new Error(`Bad content-type: ${ctype}`);
+      }
+
+      const len = Number(r.headers["content-length"] || 0);
+      if (len > MAX_SIZE) {
+        r.data.destroy();
+        const e = new Error("File too large");
+        e.code = "TOO_BIG";
+        throw e;
+      }
+
+      filePath = path.join(cacheDir, `${safeId}_${Date.now()}.${ext}`);
+      await pipeline(r.data, fs.createWriteStream(filePath));
+
+      const size = fs.statSync(filePath).size;
+      if (size <= 0) throw new Error("File is empty");
+      if (size > MAX_SIZE) {
+        const e = new Error("File too large");
+        e.code = "TOO_BIG";
+        throw e;
+      }
+      if (looksLikeError(filePath)) throw new Error("Server returned an error body");
+      return size;
+    };
+
+    try {
+      const MP3_API = await getBaseApi(); // download API base (with fallback)
+      const safeId = String(videoId).replace(/[^a-zA-Z0-9_-]/g, "_");
+
+      // The API stores the file on its own server and returns a ready link
+      // (valid ~5 minutes), so we download it right away.
+      let info = await fetchMp3Link(MP3_API, youtubeUrl);
+      const title = info.title || video?.title || "Unknown Song";
+      const channel = info.author || video?.author || "";
+
+      // Skip the download if the API already reports a file that is too big
+      if (Number(info.filesize) > MAX_SIZE) {
+        const e = new Error("File too large");
+        e.code = "TOO_BIG";
+        throw e;
+      }
+
+      let size = 0;
+      let lastErr = null;
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          size = await downloadFile(info.download_url, "mp3", safeId);
+          lastErr = null;
+          break;
+        } catch (e) {
+          lastErr = e;
+          console.error(
+            `[SING] download attempt ${attempt} failed:`,
+            e?.response?.status || e?.code || "",
+            e?.message,
+            errBody(e)
+          );
+          cleanup();
+          filePath = null;
+          if (e.code === "TOO_BIG") break;
+          // After 2 failures, request a fresh link in case it expired
+          if (attempt === 2) {
+            try { info = await fetchMp3Link(MP3_API, youtubeUrl); } catch (_) {}
+          }
+          if (attempt < 3) await sleep(2000);
+        }
+      }
+
+      if (lastErr || !filePath) throw lastErr || new Error("No file downloaded");
+
+      api.sendMessage(
+        {
+          body:
+            "🎶 **NOW PLAYING** 🎶\n" +
+            "━━━━━━━━━━━━━━━━━━━\n" +
+            `🎵 **Title:** ${title}\n` +
+            (channel ? `📺 **Channel:** ${channel}\n` : "") +
+            `📦 **Size:** ${(size / 1024 / 1024).toFixed(2)} MB\n` +
+            "━━━━━━━━━━━━━━━━━━━\n" +
+            "💿 **MAHABUB-BOT** ✨",
+          attachment: fs.createReadStream(filePath)
+        },
+        event.threadID,
+        (err) => {
+          if (err) console.error("[SING] Send audio error:", err);
+          cleanup();
+        },
+        event.messageID
+      );
+
+      api.setMessageReaction("🎵", event.messageID, () => {}, true);
+    } catch (err) {
+      console.error(
+        "[SING] DOWNLOAD ERROR:",
+        err?.response?.status || err?.code || "",
+        err?.message,
+        errBody(err)
+      );
+      cleanup();
+      api.setMessageReaction("❌", event.messageID, () => {}, true);
+      api.sendMessage(
+        err?.code === "TOO_BIG"
+          ? "❌ **File too large to send!** (max 25 MB)"
+          : "❌ **Audio download error!**\nPlease try again later.",
+        event.threadID
+      );
+    }
+  }
+};api, event, Reply }) => {
     if (String(event.senderID) !== String(Reply.author)) return;
 
     const choice = Number(String(event.body || "").trim());
