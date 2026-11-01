@@ -6,128 +6,77 @@ const { createCanvas } = require("canvas");
 const games = new Map();
 const activePlayers = new Map();
 
-const FINISH_DISTANCE = 1000;
-const CACHE_DIR = path.join(__dirname, "cache");
+const FINISH = 1000;
+const CACHE = path.join(__dirname, "cache");
 
-const random = (min, max) =>
-  Math.floor(Math.random() * (max - min + 1)) + min;
-
-function moneyFormat(num) {
-  return "$" + Number(num || 0).toLocaleString("en-US");
-}
-
-function getTargetID(event) {
-  if (event.messageReply) {
-    return event.messageReply.senderID;
-  }
-
-  if (event.mentions && Object.keys(event.mentions).length) {
-    return Object.keys(event.mentions)[0];
-  }
-
-  return null;
-}
-
-function getBet(args) {
-  const numbers = args
-    .filter(x => /^\d+$/.test(x) && x.length <= 12)
-    .map(Number);
-
-  return numbers.length ? numbers[numbers.length - 1] : 0;
-}
-
-async function getMoney(usersData, id) {
-  const data = await usersData.get(id);
-  return Number(data?.data?.money ?? data?.money ?? 0);
-}
-
-async function setMoney(usersData, id, amount) {
-  await usersData.set(id, { money: amount }, "data");
-}
-
-async function getName(usersData, id) {
-  try {
-    return await usersData.getName(id) || "Player";
-  } catch {
-    return "Player";
-  }
+function random(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function roundedRect(ctx, x, y, w, h, r, color) {
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w - r, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h - r, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
   ctx.fillStyle = color;
   ctx.fill();
 }
 
 function drawCar(ctx, x, y, color, name) {
-  ctx.save();
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(x + 12, y + 35, 25, 12);
+  ctx.fillRect(x + 100, y + 35, 25, 12);
 
-  // Wheels
-  ctx.fillStyle = "#080808";
-  ctx.fillRect(x + 18, y + 39, 28, 12);
-  ctx.fillRect(x + 100, y + 39, 28, 12);
-
-  // Car body
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.moveTo(x, y + 35);
-  ctx.lineTo(x + 15, y + 12);
-  ctx.lineTo(x + 45, y + 5);
-  ctx.lineTo(x + 100, y + 5);
-  ctx.lineTo(x + 125, y + 22);
-  ctx.lineTo(x + 140, y + 35);
-  ctx.lineTo(x + 135, y + 43);
-  ctx.lineTo(x + 5, y + 43);
+  ctx.moveTo(x, y + 32);
+  ctx.lineTo(x + 20, y + 8);
+  ctx.lineTo(x + 100, y + 8);
+  ctx.lineTo(x + 140, y + 32);
+  ctx.lineTo(x + 135, y + 45);
+  ctx.lineTo(x + 5, y + 45);
   ctx.closePath();
   ctx.fill();
 
-  // Window
-  ctx.fillStyle = "#b9edff";
+  ctx.fillStyle = "#a8eaff";
   ctx.beginPath();
-  ctx.moveTo(x + 48, y + 10);
-  ctx.lineTo(x + 92, y + 10);
-  ctx.lineTo(x + 108, y + 26);
-  ctx.lineTo(x + 35, y + 26);
+  ctx.moveTo(x + 42, y + 12);
+  ctx.lineTo(x + 95, y + 12);
+  ctx.lineTo(x + 112, y + 29);
+  ctx.lineTo(x + 28, y + 29);
   ctx.closePath();
   ctx.fill();
 
-  // Lights
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(x + 125, y + 29, 10, 6);
-
-  ctx.font = "bold 14px Arial";
+  ctx.font = "bold 15px Arial";
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
-  ctx.fillText(name.substring(0, 16), x + 70, y - 8);
-
-  ctx.restore();
+  ctx.fillText(name.slice(0, 15), x + 70, y - 8);
 }
 
-function drawRaceImage(game) {
-  const width = 1000;
-  const height = 600;
-
-  const canvas = createCanvas(width, height);
+function drawGame(game) {
+  const canvas = createCanvas(1000, 600);
   const ctx = canvas.getContext("2d");
 
-  // Background
-  const bg = ctx.createLinearGradient(0, 0, 0, height);
-  bg.addColorStop(0, "#080b20");
-  bg.addColorStop(1, "#151b35");
+  const bg = ctx.createLinearGradient(0, 0, 0, 600);
+  bg.addColorStop(0, "#080c25");
+  bg.addColorStop(1, "#18233c");
 
   ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, 1000, 600);
 
   // Stars
-  for (let i = 0; i < 75; i++) {
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.beginPath();
-    ctx.arc(random(0, width), random(0, 180), 1.5, 0, Math.PI * 2);
-    ctx.fill();
+  for (let i = 0; i < 60; i++) {
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fillRect(random(0, 1000), random(0, 140), 2, 2);
   }
 
-  // Title
   ctx.textAlign = "center";
   ctx.font = "bold 48px Arial";
   ctx.fillStyle = "#00eaff";
@@ -138,54 +87,45 @@ function drawRaceImage(game) {
 
   ctx.font = "18px Arial";
   ctx.fillStyle = "#ffffff";
-  ctx.fillText("FIRST TO CROSS THE FINISH LINE WINS", 500, 100);
+  ctx.fillText("FREE RACING CHAMPIONSHIP", 500, 100);
 
-  // Track
-  roundedRect(ctx, 45, 145, 910, 325, 20, "#282e3b");
+  roundedRect(ctx, 40, 140, 920, 330, 20, "#29303e");
 
-  // Track lines
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 3;
   ctx.setLineDash([25, 20]);
-
   ctx.beginPath();
-  ctx.moveTo(65, 305);
-  ctx.lineTo(930, 305);
+  ctx.moveTo(60, 305);
+  ctx.lineTo(940, 305);
   ctx.stroke();
-
   ctx.setLineDash([]);
 
   // Finish line
-  ctx.fillStyle = "#ffffff";
-  for (let i = 0; i < 10; i++) {
-    for (let j = 0; j < 6; j++) {
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 10; j++) {
       ctx.fillStyle = (i + j) % 2 ? "#111111" : "#ffffff";
-      ctx.fillRect(900 + i * 5, 160 + j * 45, 5, 45);
+      ctx.fillRect(890 + j * 5, 150 + i * 50, 5, 50);
     }
   }
 
-  // Cars and progress
-  game.players.forEach((player, index) => {
-    const laneY = index === 0 ? 215 : 365;
-    const carX = 75 + Math.min(player.distance / FINISH_DISTANCE, 1) * 680;
-
-    const color = index === 0 ? "#00eaff" : "#ff315b";
+  game.players.forEach((p, i) => {
+    const y = i === 0 ? 215 : 365;
+    const x = 70 + Math.min(p.distance / FINISH, 1) * 680;
+    const color = i === 0 ? "#00eaff" : "#ff315b";
 
     ctx.textAlign = "left";
     ctx.font = "bold 19px Arial";
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(player.name, 75, laneY - 30);
+    ctx.fillText(p.name, 70, y - 30);
 
-    drawCar(ctx, carX, laneY, color, player.name);
+    drawCar(ctx, x, y, color, p.name);
 
-    // Progress bar
-    roundedRect(ctx, 75, laneY + 65, 750, 12, 6, "#444b59");
-
+    roundedRect(ctx, 70, y + 65, 750, 12, 6, "#444b59");
     roundedRect(
       ctx,
-      75,
-      laneY + 65,
-      750 * Math.min(player.distance / FINISH_DISTANCE, 1),
+      70,
+      y + 65,
+      750 * Math.min(p.distance / FINISH, 1),
       12,
       6,
       color
@@ -194,161 +134,133 @@ function drawRaceImage(game) {
     ctx.font = "bold 17px Arial";
     ctx.fillStyle = "#ffffff";
     ctx.fillText(
-      `${Math.min(player.distance, FINISH_DISTANCE)} / ${FINISH_DISTANCE} M`,
-      75,
-      laneY + 105
+      `DISTANCE: ${Math.min(p.distance, FINISH)} M`,
+      70,
+      y + 105
     );
+    ctx.fillText(`SPEED: ${p.speed} KM/H`, 570, y + 105);
 
-    ctx.fillText(`SPEED: ${player.speed} KM/H`, 570, laneY + 105);
-
-    if (player.nitroUsed) {
+    if (p.nitroUsed) {
       ctx.fillStyle = "#ffbd39";
-      ctx.fillText("NITRO USED", 730, laneY + 105);
+      ctx.fillText("NITRO USED", 750, y + 105);
     }
   });
 
-  // Bottom panel
-  roundedRect(ctx, 45, 490, 910, 80, 18, "#111a2d");
+  roundedRect(ctx, 40, 490, 920, 80, 18, "#101a30");
 
   ctx.textAlign = "center";
-  ctx.font = "bold 23px Arial";
+  ctx.font = "bold 24px Arial";
   ctx.fillStyle = "#00eaff";
-  ctx.fillText(
-    `BET: ${moneyFormat(game.bet)} EACH`,
-    500,
-    520
-  );
-
-  ctx.font = "18px Arial";
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText(
-    `TOTAL PRIZE: ${moneyFormat(game.bet * 2)}`,
-    500,
-    550
-  );
+  ctx.fillText("🏁 FIRST TO 1000 METERS WINS!", 500, 540);
 
   if (game.winner) {
-    roundedRect(ctx, 270, 245, 460, 75, 18, "#e6a500");
+    roundedRect(ctx, 250, 245, 500, 75, 18, "#c38b13");
     ctx.font = "bold 36px Arial";
     ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "center";
-    ctx.fillText("🏆 " + game.winner + " WINS!", 500, 293);
+    ctx.fillText("🏆 " + game.winner + " WINS!", 500, 292);
   }
 
   return canvas.toBuffer("image/png");
 }
 
-async function sendImage(api, event, game, caption = "") {
-  if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
+async function sendImage(api, event, game, message) {
+  if (!fs.existsSync(CACHE)) {
+    fs.mkdirSync(CACHE, { recursive: true });
   }
 
-  const filePath = path.join(
-    CACHE_DIR,
-    `racing_${Date.now()}_${random(1000, 9999)}.png`
+  const file = path.join(
+    CACHE,
+    `race_${Date.now()}_${random(1000, 9999)}.png`
   );
 
-  const buffer = drawRaceImage(game);
-  fs.writeFileSync(filePath, buffer);
+  fs.writeFileSync(file, drawGame(game));
 
   try {
-    await api.sendMessage(
-      {
-        body: caption,
-        attachment: fs.createReadStream(filePath)
-      },
-      event.threadID,
-      event.messageID
-    );
+    await api.sendMessage({
+      body: message,
+      attachment: fs.createReadStream(file)
+    }, event.threadID, event.messageID);
   } finally {
     setTimeout(() => {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+      if (fs.existsSync(file)) fs.unlinkSync(file);
     }, 20000);
   }
 }
 
-function releaseGame(game) {
+function release(game) {
   games.delete(game.threadID);
-
-  for (const player of game.players) {
-    activePlayers.delete(player.id);
+  for (const p of game.players) {
+    activePlayers.delete(p.id);
   }
 }
 
-async function finishGame(api, event, game, winnerIndex, usersData) {
+async function finish(api, event, game, winnerIndex) {
   if (game.finished) return;
 
   game.finished = true;
+  game.winner = game.players[winnerIndex].name;
 
   const winner = game.players[winnerIndex];
   const loser = game.players[1 - winnerIndex];
 
-  game.winner = winner.name;
-
-  const prize = game.bet * 2;
-
-  // Winner receives the prize pool.
-  if (!game.solo || winner.id !== "BOT") {
-    const currentMoney = await getMoney(usersData, winner.id);
-    await setMoney(usersData, winner.id, currentMoney + prize);
-  }
-
-  const caption =
-    `🏆 RACE FINISHED!\n\n` +
-    `🥇 Winner: ${winner.name}\n` +
-    `🥈 Runner-up: ${loser.name}\n\n` +
-    `💰 Prize: ${moneyFormat(prize)}\n` +
-    `🏁 Distance: ${FINISH_DISTANCE} M`;
-
   try {
-    await sendImage(api, event, game, caption);
+    await sendImage(
+      api,
+      event,
+      game,
+      `🏆 RACE FINISHED!\n\n` +
+      `🥇 WINNER: ${winner.name}\n` +
+      `🥈 RUNNER UP: ${loser.name}\n\n` +
+      `🏁 Winner Distance: ${winner.distance} M\n` +
+      `🎮 Game: FREE RACING\n` +
+      `💰 Entry Fee: FREE\n\n` +
+      `Congratulations ${winner.name}!`
+    );
   } finally {
-    releaseGame(game);
+    release(game);
   }
 }
 
-function movePlayer(player, nitro = false) {
+function move(player, nitro) {
   let distance = random(95, 140);
   let speed = random(180, 270);
 
-  if (nitro && !player.nitroUsed) {
+  if (nitro) {
     distance += random(120, 190);
     speed += random(70, 120);
     player.nitroUsed = true;
   }
 
-  player.speed = speed;
   player.distance += distance;
+  player.speed = speed;
 
   return distance;
 }
 
-function createPlayer(id, name, isBot = false) {
+function makePlayer(id, name, bot = false) {
   return {
     id,
     name,
     distance: 0,
     speed: 0,
     nitroUsed: false,
-    isBot
+    bot
   };
 }
 
 module.exports.config = {
   name: "racing",
   aliases: ["race", "car"],
-  version: "1.0.0",
+  version: "2.0.0",
   author: "Si Fat",
   countDown: 3,
   role: 0,
-  shortDescription: "Neon Speed Racing Game",
-  longDescription: "Solo and Duo car racing with HD Canvas images",
+  shortDescription: "Free Neon Racing Game",
+  longDescription: "Solo and Duo Free Car Racing",
   category: "games",
   guide:
-    "{pn} solo <bet>\n" +
-    "{pn} duo @mention <bet>\n" +
+    "{pn} solo\n" +
+    "{pn} duo @mention\n" +
     "{pn} go\n" +
     "{pn} nitro\n" +
     "{pn} status\n" +
@@ -362,61 +274,29 @@ module.exports.onStart = async function ({
   usersData
 }) {
   const { senderID, threadID, messageID } = event;
-
   const action = (args[0] || "").toLowerCase();
 
   try {
-    // START SOLO
+    // SOLO MODE
     if (action === "solo") {
-      if (games.has(threadID)) {
+      if (games.has(threadID) || activePlayers.has(senderID)) {
         return api.sendMessage(
-          "❌ এই গ্রুপে ইতিমধ্যে একটি Race চলছে!",
+          "❌ তুমি অথবা এই গ্রুপ ইতিমধ্যে একটি Race-এ আছে!",
           threadID,
           messageID
         );
       }
 
-      if (activePlayers.has(senderID)) {
-        return api.sendMessage(
-          "❌ তুমি ইতিমধ্যে অন্য একটি Race-এ আছো!",
-          threadID,
-          messageID
-        );
-      }
-
-      const bet = getBet(args.slice(1));
-
-      if (!Number.isSafeInteger(bet) || bet <= 0) {
-        return api.sendMessage(
-          "❌ সঠিক Bet দাও!\nExample: /racing solo 100",
-          threadID,
-          messageID
-        );
-      }
-
-      const balance = await getMoney(usersData, senderID);
-
-      if (balance < bet) {
-        return api.sendMessage(
-          `❌ তোমার পর্যাপ্ত টাকা নেই!\nBalance: ${moneyFormat(balance)}`,
-          threadID,
-          messageID
-        );
-      }
-
-      const name = await getName(usersData, senderID);
-
-      await setMoney(usersData, senderID, balance - bet);
+      const name = await usersData.getName(senderID);
 
       const game = {
         threadID,
         solo: true,
-        bet,
-        finished: false,
         turn: 0,
+        finished: false,
         players: [
-          createPlayer(senderID, name),
-          createPlayer("BOT", "RACING BOT", true)
+          makePlayer(senderID, name || "Player"),
+          makePlayer("BOT", "RACING BOT", true)
         ]
       };
 
@@ -430,15 +310,13 @@ module.exports.onStart = async function ({
         `🏎️ SOLO RACE STARTED!\n\n` +
         `👤 Player: ${name}\n` +
         `🤖 Opponent: Racing Bot\n` +
-        `💰 Bet: ${moneyFormat(bet)}\n` +
-        `🏆 Prize: ${moneyFormat(bet * 2)}\n\n` +
-        `এখন /racing go অথবা /racing nitro লিখে Race করো!`
+        `💰 Entry Fee: FREE\n\n` +
+        `Race শুরু করতে /racing go লেখো।`
       );
-
       return;
     }
 
-    // START DUO
+    // DUO MODE
     if (action === "duo") {
       if (games.has(threadID)) {
         return api.sendMessage(
@@ -448,20 +326,13 @@ module.exports.onStart = async function ({
         );
       }
 
-      const targetID = getTargetID(event);
-      const bet = getBet(args.slice(1));
+      const targetID = event.messageReply
+        ? event.messageReply.senderID
+        : event.mentions && Object.keys(event.mentions)[0];
 
       if (!targetID || targetID === senderID) {
         return api.sendMessage(
-          "❌ একজন বন্ধুকে Mention করে Duo Race শুরু করো!\nExample: /racing duo @friend 100",
-          threadID,
-          messageID
-        );
-      }
-
-      if (!Number.isSafeInteger(bet) || bet <= 0) {
-        return api.sendMessage(
-          "❌ সঠিক Bet দাও!\nExample: /racing duo @friend 100",
+          "❌ একজন বন্ধুকে Mention অথবা Reply করো!",
           threadID,
           messageID
         );
@@ -472,46 +343,23 @@ module.exports.onStart = async function ({
         activePlayers.has(targetID)
       ) {
         return api.sendMessage(
-          "❌ একজন Player ইতিমধ্যে অন্য Race-এ আছে!",
+          "❌ একজন Player অন্য Race-এ আছে!",
           threadID,
           messageID
         );
       }
 
-      const balance1 = await getMoney(usersData, senderID);
-      const balance2 = await getMoney(usersData, targetID);
-
-      if (balance1 < bet || balance2 < bet) {
-        return api.sendMessage(
-          `❌ দুইজনেরই পর্যাপ্ত টাকা থাকতে হবে!\n\n` +
-          `তোমার Balance: ${moneyFormat(balance1)}\n` +
-          `বন্ধুর Balance: ${moneyFormat(balance2)}`,
-          threadID,
-          messageID
-        );
-      }
-
-      const name1 = await getName(usersData, senderID);
-      const name2 = await getName(usersData, targetID);
-
-      await setMoney(usersData, senderID, balance1 - bet);
-
-      try {
-        await setMoney(usersData, targetID, balance2 - bet);
-      } catch (error) {
-        await setMoney(usersData, senderID, balance1);
-        throw error;
-      }
+      const name1 = await usersData.getName(senderID);
+      const name2 = await usersData.getName(targetID);
 
       const game = {
         threadID,
         solo: false,
-        bet,
-        finished: false,
         turn: 0,
+        finished: false,
         players: [
-          createPlayer(senderID, name1),
-          createPlayer(targetID, name2)
+          makePlayer(senderID, name1 || "Player 1"),
+          makePlayer(targetID, name2 || "Player 2")
         ]
       };
 
@@ -524,23 +372,21 @@ module.exports.onStart = async function ({
         event,
         game,
         `🏎️ DUO RACE STARTED!\n\n` +
-        `🔵 Player 1: ${name1}\n` +
-        `🔴 Player 2: ${name2}\n\n` +
-        `💰 Each Bet: ${moneyFormat(bet)}\n` +
-        `🏆 Total Prize: ${moneyFormat(bet * 2)}\n\n` +
-        `প্রথমে ${name1} খেলবে!\n` +
+        `🔵 ${name1}\n` +
+        `🔴 ${name2}\n\n` +
+        `💰 Entry Fee: FREE\n` +
+        `🏆 Prize: Trophy + Score\n\n` +
+        `প্রথম Turn: ${name1}\n` +
         `/racing go অথবা /racing nitro`
       );
-
       return;
     }
 
-    // FIND ACTIVE GAME
     const game = games.get(threadID);
 
     if (!game) {
       return api.sendMessage(
-        "❌ কোনো Active Race নেই!\n/racing solo 100 অথবা /racing duo @mention 100",
+        "❌ কোনো Race চলছে না!\n/racing solo অথবা /racing duo @mention",
         threadID,
         messageID
       );
@@ -548,11 +394,9 @@ module.exports.onStart = async function ({
 
     if (game.finished) return;
 
-    const playerIndex = game.players.findIndex(
-      player => player.id === senderID
-    );
+    const index = game.players.findIndex(p => p.id === senderID);
 
-    if (playerIndex === -1) {
+    if (index === -1) {
       return api.sendMessage(
         "❌ তুমি এই Race-এর Player নও!",
         threadID,
@@ -560,7 +404,7 @@ module.exports.onStart = async function ({
       );
     }
 
-    const player = game.players[playerIndex];
+    const player = game.players[index];
 
     // STATUS
     if (action === "status") {
@@ -568,9 +412,9 @@ module.exports.onStart = async function ({
         api,
         event,
         game,
-        `🏁 RACE STATUS\n` +
+        `🏁 CURRENT RACE STATUS\n\n` +
         game.players.map(p =>
-          `${p.name}: ${p.distance}/${FINISH_DISTANCE} M`
+          `${p.name}: ${p.distance}/${FINISH} M`
         ).join("\n")
       );
     }
@@ -578,29 +422,21 @@ module.exports.onStart = async function ({
     // QUIT
     if (action === "quit") {
       if (game.solo) {
-        game.players[1].distance = FINISH_DISTANCE;
-        return finishGame(api, event, game, 1, usersData);
+        return finish(api, event, game, 1);
       }
 
-      return finishGame(
-        api,
-        event,
-        game,
-        1 - playerIndex,
-        usersData
-      );
+      return finish(api, event, game, 1 - index);
     }
 
     if (action !== "go" && action !== "nitro") {
       return api.sendMessage(
-        "❌ Command বুঝতে পারিনি!\n/racing go\n/racing nitro\n/racing status\n/racing quit",
+        "❌ সঠিক Command দাও!\n/racing go\n/racing nitro\n/racing status\n/racing quit",
         threadID,
         messageID
       );
     }
 
-    // DUO TURN SYSTEM
-    if (!game.solo && game.turn !== playerIndex) {
+    if (!game.solo && game.turn !== index) {
       return api.sendMessage(
         `⏳ এখন ${game.players[game.turn].name}-এর Turn!`,
         threadID,
@@ -610,53 +446,43 @@ module.exports.onStart = async function ({
 
     if (action === "nitro" && player.nitroUsed) {
       return api.sendMessage(
-        "❌ তোমার Nitro ইতিমধ্যে ব্যবহার করা হয়েছে!",
+        "❌ তোমার Nitro শেষ!",
         threadID,
         messageID
       );
     }
 
-    // PLAYER MOVE
-    const nitro = action === "nitro";
-    const gained = movePlayer(player, nitro);
+    const gained = move(player, action === "nitro");
 
-    if (player.distance >= FINISH_DISTANCE) {
-      return finishGame(
-        api,
-        event,
-        game,
-        playerIndex,
-        usersData
-      );
+    if (player.distance >= FINISH) {
+      return finish(api, event, game, index);
     }
 
-    // SOLO BOT MOVE
+    // BOT MOVE
     if (game.solo) {
       const bot = game.players[1];
+      const useNitro = !bot.nitroUsed && Math.random() < 0.25;
 
-      const botNitro =
-        !bot.nitroUsed && Math.random() < 0.25;
+      move(bot, useNitro);
 
-      movePlayer(bot, botNitro);
-
-      if (bot.distance >= FINISH_DISTANCE) {
-        return finishGame(api, event, game, 1, usersData);
+      if (bot.distance >= FINISH) {
+        return finish(api, event, game, 1);
       }
     } else {
-      game.turn = 1 - playerIndex;
+      game.turn = 1 - index;
     }
 
-    const nextMessage = game.solo
-      ? `⚡ ${player.name} এগিয়েছে ${gained} M!\n🤖 Bot-ও Race করেছে!\nআবার /racing go অথবা /racing nitro`
+    const message = game.solo
+      ? `⚡ ${player.name} এগিয়েছে ${gained} M!\n🤖 Bot-ও Race করেছে!\nআবার /racing go অথবা /racing nitro লেখো।`
       : `⚡ ${player.name} এগিয়েছে ${gained} M!\n\nএখন ${game.players[game.turn].name}-এর Turn!`;
 
-    await sendImage(api, event, game, nextMessage);
+    await sendImage(api, event, game, message);
 
   } catch (error) {
     console.error("[RACING ERROR]", error);
 
     return api.sendMessage(
-      "❌ Racing Game-এ সমস্যা হয়েছে! Console Log পরীক্ষা করো।",
+      "❌ Racing Game Error! Console Log পরীক্ষা করো।",
       threadID,
       messageID
     );
