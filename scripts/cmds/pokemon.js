@@ -1,61 +1,53 @@
 "use strict";
 
-/*
- * POKEMON WORLD ULTIMATE
- * GoatBot V2 Command
- * Graphics: Canvas
- * Database: JSON
- */
-
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-let Canvas;
-try {
-  Canvas = require("canvas");
-} catch (e) {
-  Canvas = null;
-}
+let Canvas = null;
+try { Canvas = require("canvas"); } catch (e) {}
 
 const DATA_DIR = path.join(__dirname, "pokemon_world_data");
 const DB_FILE = path.join(DATA_DIR, "database.json");
 const BACKUP_FILE = path.join(DATA_DIR, "backup.json");
 const IMAGE_DIR = path.join(DATA_DIR, "cards");
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(IMAGE_DIR)) fs.mkdirSync(IMAGE_DIR, { recursive: true });
+for (const dir of [DATA_DIR, IMAGE_DIR]) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
 
 const CONFIG = {
   startMoney: 1000,
+  defaultBall: 10,
+  maxTeam: 6,
+  maxStorage: 100,
+  pageSize: 8,
   huntCooldown: 30000,
   battleCooldown: 15000,
-  catchCooldown: 5000,
-  maxTeam: 6,
-  pageSize: 8,
-  adminIDs: [],
-  defaultBall: 10
+  catchCooldown: 3000,
+  huntTime: 60000,
+  adminIDs: []
 };
 
 const TYPES = {
-  Normal: { strong: [], weak: ["Fighting"], color: "#aaaaaa" },
-  Fire: { strong: ["Grass", "Ice", "Bug", "Steel"], weak: ["Water", "Ground", "Rock"], color: "#ff7043" },
-  Water: { strong: ["Fire", "Ground", "Rock"], weak: ["Electric", "Grass"], color: "#42a5f5" },
-  Electric: { strong: ["Water", "Flying"], weak: ["Ground"], color: "#fdd835" },
-  Grass: { strong: ["Water", "Ground", "Rock"], weak: ["Fire", "Ice", "Poison", "Flying", "Bug"], color: "#66bb6a" },
-  Ice: { strong: ["Grass", "Ground", "Flying", "Dragon"], weak: ["Fire", "Fighting", "Rock", "Steel"], color: "#80deea" },
-  Fighting: { strong: ["Normal", "Ice", "Rock", "Dark", "Steel"], weak: ["Flying", "Psychic", "Fairy"], color: "#ef5350" },
-  Poison: { strong: ["Grass", "Fairy"], weak: ["Ground", "Psychic"], color: "#ab47bc" },
-  Ground: { strong: ["Fire", "Electric", "Poison", "Rock", "Steel"], weak: ["Water", "Grass", "Ice"], color: "#bc8f50" },
-  Flying: { strong: ["Grass", "Fighting", "Bug"], weak: ["Electric", "Ice", "Rock"], color: "#90caf9" },
-  Psychic: { strong: ["Fighting", "Poison"], weak: ["Bug", "Ghost", "Dark"], color: "#ec407a" },
-  Bug: { strong: ["Grass", "Psychic", "Dark"], weak: ["Fire", "Flying", "Rock"], color: "#9ccc65" },
-  Rock: { strong: ["Fire", "Ice", "Flying", "Bug"], weak: ["Water", "Grass", "Fighting", "Ground", "Steel"], color: "#a1887f" },
-  Ghost: { strong: ["Psychic", "Ghost"], weak: ["Ghost", "Dark"], color: "#7e57c2" },
-  Dragon: { strong: ["Dragon"], weak: ["Ice", "Dragon", "Fairy"], color: "#5c6bc0" },
-  Dark: { strong: ["Psychic", "Ghost"], weak: ["Fighting", "Bug", "Fairy"], color: "#616161" },
-  Steel: { strong: ["Ice", "Rock", "Fairy"], weak: ["Fire", "Fighting", "Ground"], color: "#90a4ae" },
-  Fairy: { strong: ["Fighting", "Dragon", "Dark"], weak: ["Poison", "Steel"], color: "#f48fb1" }
+  Normal: { strong: [], weak: ["Fighting"] },
+  Fire: { strong: ["Grass", "Ice", "Bug", "Steel"], weak: ["Water", "Ground", "Rock"] },
+  Water: { strong: ["Fire", "Ground", "Rock"], weak: ["Electric", "Grass"] },
+  Electric: { strong: ["Water", "Flying"], weak: ["Ground"] },
+  Grass: { strong: ["Water", "Ground", "Rock"], weak: ["Fire", "Ice", "Poison", "Flying", "Bug"] },
+  Ice: { strong: ["Grass", "Ground", "Flying", "Dragon"], weak: ["Fire", "Fighting", "Rock", "Steel"] },
+  Fighting: { strong: ["Normal", "Ice", "Rock", "Dark", "Steel"], weak: ["Flying", "Psychic", "Fairy"] },
+  Poison: { strong: ["Grass", "Fairy"], weak: ["Ground", "Psychic"] },
+  Ground: { strong: ["Fire", "Electric", "Poison", "Rock", "Steel"], weak: ["Water", "Grass", "Ice"] },
+  Flying: { strong: ["Grass", "Fighting", "Bug"], weak: ["Electric", "Ice", "Rock"] },
+  Psychic: { strong: ["Fighting", "Poison"], weak: ["Bug", "Ghost", "Dark"] },
+  Bug: { strong: ["Grass", "Psychic", "Dark"], weak: ["Fire", "Flying", "Rock"] },
+  Rock: { strong: ["Fire", "Ice", "Flying", "Bug"], weak: ["Water", "Grass", "Fighting", "Ground", "Steel"] },
+  Ghost: { strong: ["Psychic", "Ghost"], weak: ["Ghost", "Dark"] },
+  Dragon: { strong: ["Dragon"], weak: ["Ice", "Dragon", "Fairy"] },
+  Dark: { strong: ["Psychic", "Ghost"], weak: ["Fighting", "Bug", "Fairy"] },
+  Steel: { strong: ["Ice", "Rock", "Fairy"], weak: ["Fire", "Fighting", "Ground"] },
+  Fairy: { strong: ["Fighting", "Dragon", "Dark"], weak: ["Poison", "Steel"] }
 };
 
 const RARITY = {
@@ -67,11 +59,6 @@ const RARITY = {
   Mythical: { weight: 1.5, color: "#f06292", multiplier: 3 },
   Secret: { weight: 0.5, color: "#e040fb", multiplier: 4 }
 };
-
-/*
- * Pokémon registry.
- * Admin tools can add more Pokémon in the next part.
- */
 
 const POKEMON = [
   { id: 1, name: "Bulbasaur", type: ["Grass", "Poison"], rarity: "Common", hp: 45, atk: 49, def: 49, spd: 45, evolve: "Ivysaur", level: 16, emoji: "🌱" },
@@ -133,14 +120,14 @@ const MOVES = {
   Fairy: ["Fairy Wind", "Dazzling Gleam", "Moonblast"]
 };
 
-const GYM_LEADERS = [
-  { name: "Brock", type: "Rock", pokemon: ["Geodude", "Garchomp"], reward: 300 },
-  { name: "Misty", type: "Water", pokemon: ["Psyduck", "Lapras"], reward: 350 },
-  { name: "Lt. Surge", type: "Electric", pokemon: ["Pikachu", "Raichu"], reward: 400 },
-  { name: "Erika", type: "Grass", pokemon: ["Bulbasaur", "Venusaur"], reward: 450 },
-  { name: "Blaine", type: "Fire", pokemon: ["Charmander", "Charizard"], reward: 500 },
-  { name: "Sabrina", type: "Psychic", pokemon: ["Gastly", "Mewtwo"], reward: 600 },
-  { name: "Clair", type: "Dragon", pokemon: ["Dragonair", "Dragonite"], reward: 700 }
+const GYMS = [
+  { name: "Brock", type: "Rock", pokemon: ["Geodude", "Garchomp"], badge: "boulder", reward: 300 },
+  { name: "Misty", type: "Water", pokemon: ["Psyduck", "Lapras"], badge: "cascade", reward: 350 },
+  { name: "Lt. Surge", type: "Electric", pokemon: ["Pikachu", "Raichu"], badge: "thunder", reward: 400 },
+  { name: "Erika", type: "Grass", pokemon: ["Bulbasaur", "Venusaur"], badge: "rainbow", reward: 450 },
+  { name: "Blaine", type: "Fire", pokemon: ["Charmander", "Charizard"], badge: "volcano", reward: 500 },
+  { name: "Sabrina", type: "Psychic", pokemon: ["Gastly", "Mewtwo"], badge: "marsh", reward: 600 },
+  { name: "Clair", type: "Dragon", pokemon: ["Dragonair", "Dragonite"], badge: "earth", reward: 700 }
 ];
 
 const BADGES = [
@@ -148,23 +135,15 @@ const BADGES = [
   { id: "cascade", name: "Cascade Badge", leader: "Misty", emoji: "💧", rarity: "Common" },
   { id: "thunder", name: "Thunder Badge", leader: "Lt. Surge", emoji: "⚡", rarity: "Uncommon" },
   { id: "rainbow", name: "Rainbow Badge", leader: "Erika", emoji: "🌈", rarity: "Uncommon" },
-  { id: "soul", name: "Soul Badge", leader: "Koga", emoji: "☠️", rarity: "Rare" },
   { id: "marsh", name: "Marsh Badge", leader: "Sabrina", emoji: "🔮", rarity: "Rare" },
   { id: "volcano", name: "Volcano Badge", leader: "Blaine", emoji: "🌋", rarity: "Epic" },
-  { id: "earth", name: "Earth Badge", leader: "Giovanni", emoji: "🌍", rarity: "Legendary" }
+  { id: "earth", name: "Earth Badge", leader: "Clair", emoji: "🌍", rarity: "Legendary" }
 ];
 
 function defaultDB() {
   return {
-    version: 1,
-    players: {},
-    activeHunts: {},
-    battles: {},
-    groupBattles: {},
-    trades: {},
-    customPokemon: [],
-    customBadges: [],
-    logs: []
+    version: 2, players: {}, activeHunts: {}, battles: {},
+    customPokemon: [], customBadges: [], logs: []
   };
 }
 
@@ -175,16 +154,14 @@ function loadDB() {
       fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
       return db;
     }
-    const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-    return { ...defaultDB(), ...data };
-  } catch (err) {
-    console.error("[Pokemon DB]", err);
+    return { ...defaultDB(), ...JSON.parse(fs.readFileSync(DB_FILE, "utf8")) };
+  } catch (e) {
+    console.error("[Pokemon DB]", e);
     try {
-      if (fs.existsSync(BACKUP_FILE)) {
-        return { ...defaultDB(), ...JSON.parse(fs.readFileSync(BACKUP_FILE, "utf8")) };
-      }
-    } catch (_) {}
-    return defaultDB();
+      return { ...defaultDB(), ...JSON.parse(fs.readFileSync(BACKUP_FILE, "utf8")) };
+    } catch (_) {
+      return defaultDB();
+    }
   }
 }
 
@@ -195,231 +172,207 @@ function saveDB() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
-      const temp = DB_FILE + ".tmp";
-      fs.writeFileSync(temp, JSON.stringify(DB, null, 2));
-      fs.renameSync(temp, DB_FILE);
+      const tmp = DB_FILE + ".tmp";
+      fs.writeFileSync(tmp, JSON.stringify(DB, null, 2));
+      fs.renameSync(tmp, DB_FILE);
       fs.copyFileSync(DB_FILE, BACKUP_FILE);
-    } catch (err) {
-      console.error("[Pokemon Save]", err);
+    } catch (e) {
+      console.error("[Pokemon Save]", e);
     }
-  }, 150);
+  }, 200);
 }
 
-function id() {
+function uid() {
   return crypto.randomBytes(5).toString("hex");
 }
-
-function random(min, max) {
+function rand(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
-
-function chance(percent) {
-  return Math.random() * 100 < percent;
+function chance(n) {
+  return Math.random() * 100 < n;
 }
-
-function getPokemon(name) {
-  const all = [...POKEMON, ...DB.customPokemon];
-  return all.find(p => p.name.toLowerCase() === String(name).toLowerCase());
+function send(api, threadID, body) {
+  return api.sendMessage(body, threadID);
 }
-
 function getAllPokemon() {
-  return [...POKEMON, ...DB.customPokemon];
+  return [...POKEMON, ...(DB.customPokemon || [])];
+}
+function getPokemon(name) {
+  return getAllPokemon().find(p => p.name.toLowerCase() === String(name).toLowerCase());
+}
+function clean(value) {
+  return String(value || "").replace(/[<>]/g, "").slice(0, 50);
 }
 
-function getPlayer(userID, name = "Trainer") {
+function getPlayer(userID, name) {
   if (!DB.players[userID]) {
     DB.players[userID] = {
-      id: userID,
-      name,
-      money: CONFIG.startMoney,
-      balls: CONFIG.defaultBall,
-      greatBalls: 0,
-      ultraBalls: 0,
-      bait: 3,
-      pokemons: [],
-      badges: [],
-      team: [],
-      wins: 0,
-      losses: 0,
-      level: 1,
-      xp: 0,
-      lastHunt: 0,
-      lastBattle: 0,
-      lastCatch: 0,
-      createdAt: Date.now()
+      id: userID, name: name || "Trainer", money: CONFIG.startMoney,
+      balls: CONFIG.defaultBall, greatBalls: 0, ultraBalls: 0, bait: 3,
+      pokemons: [], team: [], badges: [], wins: 0, losses: 0,
+      level: 1, xp: 0, lastHunt: 0, lastBattle: 0, lastCatch: 0
     };
     saveDB();
   }
-  DB.players[userID].name = name || DB.players[userID].name;
-  return DB.players[userID];
+  const p = DB.players[userID];
+  p.pokemons = p.pokemons || [];
+  p.team = p.team || [];
+  p.badges = p.badges || [];
+  p.name = name || p.name;
+  return p;
 }
 
-function makePokemon(species, level = 5) {
-  const base = getPokemon(species);
+function makePokemon(name, level = 5) {
+  const base = getPokemon(name);
   if (!base) return null;
-
-  const shiny = chance(1);
   const mult = RARITY[base.rarity]?.multiplier || 1;
-  const stat = (n) => Math.max(1, Math.floor((n + level * 2) * mult));
+  const stat = n => Math.max(1, Math.floor((n + level * 2) * mult));
+  const type = base.type || ["Normal"];
+  const moves = MOVES[type[0]] || MOVES.Normal;
 
   return {
-    uid: id(),
-    species: base.name,
-    nickname: base.name,
-    type: base.type,
-    rarity: base.rarity,
-    level,
-    xp: 0,
-    hp: stat(base.hp),
-    maxHp: stat(base.hp),
-    atk: stat(base.atk),
-    def: stat(base.def),
-    spd: stat(base.spd),
-    shiny,
-    caughtAt: Date.now(),
-    friendship: 10,
-    moves: [
-      { name: MOVES[base.type[0]]?.[0] || "Tackle", power: 20, type: base.type[0], cooldown: 0 },
-      { name: MOVES[base.type[0]]?.[1] || "Power Strike", power: 35, type: base.type[0], cooldown: 1 },
-      { name: MOVES[base.type[0]]?.[2] || "Ultimate Attack", power: 50, type: base.type[0], cooldown: 2 }
-    ],
+    uid: uid(), species: base.name, nickname: base.name,
+    type, rarity: base.rarity, level, xp: 0,
+    hp: stat(base.hp), maxHp: stat(base.hp),
+    atk: stat(base.atk), def: stat(base.def), spd: stat(base.spd),
+    shiny: chance(1), caughtAt: Date.now(), friendship: 10,
+    moves: moves.map((m, i) => ({
+      name: m, power: [20, 35, 50][i], type: type[0]
+    })),
     status: null
   };
 }
 
-function getOwnedPokemon(player, uid) {
-  return player.pokemons.find(p => p.uid === uid || p.uid.startsWith(uid));
+function addPokemon(player, pokemon) {
+  if (player.pokemons.length >= CONFIG.maxStorage) return false;
+  player.pokemons.push(pokemon);
+  if (player.team.length < CONFIG.maxTeam) player.team.push(pokemon.uid);
+  return true;
 }
-
+function getOwnedPokemon(player, id) {
+  return player.pokemons.find(p => p.uid === id || p.uid.startsWith(id));
+}
 function getTeam(player) {
-  return player.team
-    .map(uid => getOwnedPokemon(player, uid))
-    .filter(Boolean);
+  return player.team.map(id => getOwnedPokemon(player, id)).filter(Boolean);
 }
-
+function getActivePokemon(player) {
+  return getTeam(player).find(p => p.hp > 0) ||
+    player.pokemons.find(p => p.hp > 0) || null;
+}
 function addXP(player, amount) {
   player.xp += amount;
-  let leveled = false;
+  let count = 0;
   while (player.xp >= player.level * 100) {
     player.xp -= player.level * 100;
     player.level++;
     player.money += 100;
-    leveled = true;
+    count++;
   }
-  return leveled;
+  return count;
 }
-
-function getRarityRoll() {
-  const total = Object.values(RARITY).reduce((a, b) => a + b.weight, 0);
-  let roll = Math.random() * total;
+function rollRarity() {
+  const total = Object.values(RARITY).reduce((s, r) => s + r.weight, 0);
+  let n = Math.random() * total;
   for (const [name, data] of Object.entries(RARITY)) {
-    roll -= data.weight;
-    if (roll <= 0) return name;
+    n -= data.weight;
+    if (n <= 0) return name;
   }
   return "Common";
 }
-
-function pickWildPokemon() {
-  const rarity = getRarityRoll();
-  const pool = getAllPokemon().filter(p => p.rarity === rarity);
-  if (!pool.length) {
-    const fallback = getAllPokemon().filter(p => p.rarity === "Common");
-    return fallback[random(0, fallback.length - 1)];
-  }
-  return pool[random(0, pool.length - 1)];
+function pickWild() {
+  const rarity = rollRarity();
+  let pool = getAllPokemon().filter(p => p.rarity === rarity);
+  if (!pool.length) pool = getAllPokemon().filter(p => p.rarity === "Common");
+  return pool[rand(0, pool.length - 1)];
 }
-
 function typeMultiplier(attackType, defenderTypes) {
   let mult = 1;
+  const data = TYPES[attackType];
+  if (!data) return mult;
   for (const type of defenderTypes || []) {
-    const data = TYPES[attackType];
-    if (!data) continue;
     if (data.strong.includes(type)) mult *= 2;
     if (data.weak.includes(type)) mult *= 0.5;
   }
   return mult;
 }
-
-function calculateDamage(attacker, defender, move) {
+function damage(attacker, defender, move) {
   const mult = typeMultiplier(move.type, defender.type);
   const base = Math.max(1, move.power + attacker.atk * 0.45 - defender.def * 0.25);
   const critical = chance(10);
-  const randomFactor = random(85, 100) / 100;
-  const damage = Math.max(1, Math.floor(base * mult * randomFactor * (critical ? 1.5 : 1)));
-  return { damage, critical, multiplier: mult };
+  return {
+    value: Math.max(1, Math.floor(base * mult * (rand(85, 100) / 100) * (critical ? 1.5 : 1))),
+    critical, mult
+  };
+}
+function bar(current, max) {
+  const n = Math.round(Math.max(0, current) / Math.max(1, max) * 10);
+  return "🟩".repeat(n) + "⬛".repeat(10 - n);
 }
 
-function makeBar(current, max, length = 12) {
-  const ratio = Math.max(0, Math.min(1, current / Math.max(1, max)));
-  const filled = Math.round(ratio * length);
-  return "🟩".repeat(filled) + "⬛".repeat(length - filled);
+/* IMPORTANT: GoatBot V2 requires commandName, not only name. */
+function registerReply(messageID, data) {
+  if (!global.GoatBot) global.GoatBot = {};
+  if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+
+  global.GoatBot.onReply.set(messageID, {
+    commandName: "pokemon",
+    name: "pokemon",
+    messageID,
+    ...data
+  });
 }
 
-async function makeCard(pokemon, title = "WILD POKÉMON") {
+async function makeCard(pokemon, title) {
   if (!Canvas) return null;
-
   const canvas = Canvas.createCanvas(700, 420);
   const ctx = canvas.getContext("2d");
   const base = getPokemon(pokemon.species);
   const color = RARITY[pokemon.rarity]?.color || "#ffffff";
-
   const gradient = ctx.createLinearGradient(0, 0, 700, 420);
   gradient.addColorStop(0, "#101a3a");
   gradient.addColorStop(1, "#28133e");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 700, 420);
-
   ctx.strokeStyle = color;
   ctx.lineWidth = 8;
   ctx.strokeRect(12, 12, 676, 396);
-
   ctx.fillStyle = color;
   ctx.font = "bold 25px Arial";
-  ctx.fillText(title, 35, 55);
-
-  ctx.fillStyle = "#ffffff";
+  ctx.fillText(title || "POKEMON", 35, 55);
+  ctx.fillStyle = "#fff";
   ctx.font = "bold 42px Arial";
   ctx.fillText(pokemon.nickname || pokemon.species, 35, 115);
-
   ctx.font = "100px Arial";
   ctx.fillText(base?.emoji || "❔", 70, 260);
-
-  ctx.font = "bold 22px Arial";
   ctx.fillStyle = color;
-  ctx.fillText(pokemon.rarity + (pokemon.shiny ? " ✨ SHINY" : ""), 35, 320);
-
-  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 22px Arial";
+  ctx.fillText(pokemon.rarity + (pokemon.shiny ? " SHINY ✨" : ""), 35, 320);
+  ctx.fillStyle = "#fff";
   ctx.font = "20px Arial";
-  ctx.fillText("TYPE: " + (pokemon.type || []).join(" / "), 350, 190);
+  ctx.fillText("TYPE: " + pokemon.type.join("/"), 350, 190);
   ctx.fillText("LEVEL: " + pokemon.level, 350, 230);
   ctx.fillText("HP: " + pokemon.hp + "/" + pokemon.maxHp, 350, 270);
-  ctx.fillText("ATK: " + pokemon.atk + "   DEF: " + pokemon.def, 350, 310);
+  ctx.fillText("ATK: " + pokemon.atk + " DEF: " + pokemon.def, 350, 310);
   ctx.fillText("SPD: " + pokemon.spd, 350, 350);
-
-  const file = path.join(IMAGE_DIR, `${id()}.png`);
+  const file = path.join(IMAGE_DIR, uid() + ".png");
   fs.writeFileSync(file, canvas.toBuffer("image/png"));
   return file;
 }
-
-function sendCard(api, threadID, pokemon, title, body) {
-  return makeCard(pokemon, title).then(file => {
-    if (!file) {
-      return api.sendMessage(body, threadID);
-    }
-    api.sendMessage({
-      body,
-      attachment: fs.createReadStream(file)
-    }, threadID, () => {
-      try { fs.unlinkSync(file); } catch (_) {}
-    });
+async function sendCard(api, threadID, pokemon, title, body) {
+  let file = null;
+  try { file = await makeCard(pokemon, title); } catch (e) {}
+  if (!file) return send(api, threadID, body);
+  return api.sendMessage({
+    body,
+    attachment: fs.createReadStream(file)
+  }, threadID, () => {
+    try { fs.unlinkSync(file); } catch (e) {}
   });
 }
-
 function isAdmin(userID) {
-  return CONFIG.adminIDs.includes(String(userID));
+  return CONFIG.adminIDs.map(String).includes(String(userID));
 }
-
-function getRandomRegion() {
+function getRegion() {
   const regions = [
     { name: "Viridian Forest", types: ["Grass", "Bug"], bonus: ["Bulbasaur", "Pikachu", "Gastly"] },
     { name: "Rocky Mountain", types: ["Rock", "Ground"], bonus: ["Geodude", "Garchomp"] },
@@ -428,580 +381,291 @@ function getRandomRegion() {
     { name: "Mystic Cave", types: ["Ghost", "Psychic"], bonus: ["Gastly", "Gengar", "Mewtwo"] },
     { name: "Dragon Peak", types: ["Dragon", "Flying"], bonus: ["Dratini", "Dragonite", "Rayquaza"] }
   ];
-  return regions[random(0, regions.length - 1)];
+  return regions[rand(0, regions.length - 1)];
 }
-
 function pickRegionPokemon(region) {
   if (chance(35)) {
     const bonus = region.bonus.map(getPokemon).filter(Boolean);
-    if (bonus.length) return bonus[random(0, bonus.length - 1)];
+    if (bonus.length) return bonus[rand(0, bonus.length - 1)];
   }
-
   const pool = getAllPokemon().filter(p => p.type.some(t => region.types.includes(t)));
-  return pool.length ? pool[random(0, pool.length - 1)] : pickWildPokemon();
+  return pool.length ? pool[rand(0, pool.length - 1)] : pickWild();
 }
-
-function cleanText(value) {
-  return String(value || "").replace(/[<>]/g, "").slice(0, 100);
+function pokemonText(p, i) {
+  return `${i + 1}. ${p.shiny ? "✨" : ""}${p.nickname} [${p.rarity}]
+Type: ${p.type.join("/")} | Lv.${p.level}
+HP ${p.hp}/${p.maxHp} | ATK ${p.atk} | DEF ${p.def}
+ID: ${p.uid.slice(0, 6)}`;
 }
-function registerReply(global, messageID, data) {
-  if (!global.GoatBot) global.GoatBot = {};
-  if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
-
-  global.GoatBot.onReply.set(messageID, {
-    name: "pokemon",
-    messageID,
-    ...data
-  });
-}
-
-function send(api, threadID, text) {
-  return api.sendMessage(text, threadID);
-}
-
-function getActivePokemon(player) {
-  const team = getTeam(player);
-  return team.find(p => p.hp > 0) || team[0] || player.pokemons[0] || null;
-}
-
-function addPokemon(player, pokemon) {
-  if (player.pokemons.length >= 100) return false;
-
-  player.pokemons.push(pokemon);
-
-  if (player.team.length < CONFIG.maxTeam) {
-    player.team.push(pokemon.uid);
-  }
-
-  return true;
-}
-
-function getPokemonText(p, index) {
-  return `${index + 1}. ${p.shiny ? "✨" : ""}${p.nickname} [${p.rarity}]
-   Type: ${p.type.join("/")}
-   Lv.${p.level} | HP ${p.hp}/${p.maxHp}
-   ATK ${p.atk} | DEF ${p.def} | SPD ${p.spd}
-   ID: ${p.uid.slice(0, 6)}`;
-}
-
-function getBadgeList(player) {
-  const all = [...BADGES, ...DB.customBadges];
-  return player.badges.map(id => all.find(b => b.id === id)).filter(Boolean);
-}
-
-function startBattle(api, threadID, userID, player, enemy, mode, extra = {}) {
-  const own = getActivePokemon(player);
-
-  if (!own) {
-    return send(api, threadID, "❌ আগে Pokémon ধরো। তোমার কোনো Pokémon নেই!");
-  }
-
-  if (own.hp <= 0) {
-    return send(api, threadID, "❌ তোমার Pokémon-এর HP শেষ! আগে heal করো: `p heal`");
-  }
-
-  const battleID = id();
-
-  DB.battles[battleID] = {
-    id: battleID,
-    threadID,
-    userID,
-    mode,
-    ownUID: own.uid,
-    enemy: { ...enemy },
-    enemyHP: enemy.hp,
-    enemyMaxHP: enemy.hp,
-    round: 1,
-    extra,
-    createdAt: Date.now()
-  };
-
-  saveDB();
-
-  const moves = own.moves || [];
-  const text =
-    `⚔️ POKÉMON BATTLE START!\n\n` +
-    `🟦 তোমার Pokémon: ${own.nickname} Lv.${own.level}\n` +
-    `${makeBar(own.hp, own.maxHp)} ${own.hp}/${own.maxHp}\n\n` +
-    `🟥 প্রতিপক্ষ: ${enemy.species}\n` +
-    `${makeBar(enemy.hp, enemy.hp)} ${enemy.hp}/${enemy.hp}\n\n` +
-    `🎯 কোন Skill ব্যবহার করবে?\n\n` +
-    moves.map((m, i) => `${i + 1}. ${m.name} [Power ${m.power}]`).join("\n") +
-    `\n\nReply করো: 1 / 2 / 3`;
-
-  api.sendMessage(text, threadID, (err, info) => {
-    if (!err) {
-      registerReply(global, info.messageID, {
-        action: "battle",
-        battleID,
-        userID
-      });
-    }
-  });
-}
-
-function endBattle(api, battle, won) {
-  const player = DB.players[battle.userID];
-  if (!player) {
-    delete DB.battles[battle.id];
-    saveDB();
-    return;
-  }
-
-  const own = getOwnedPokemon(player, battle.ownUID);
-
-  if (won) {
-    player.wins++;
-    player.money += battle.mode === "gym" ? 250 : 100;
-    addXP(player, 60);
-
-    if (own) {
-      own.xp += 50;
-      own.hp = Math.max(1, Math.floor(own.maxHp * 0.35));
-    }
-
-    let reward = "";
-
-    if (battle.mode === "gym" && battle.extra.badgeID) {
-      const badge = [...BADGES, ...DB.customBadges]
-        .find(b => b.id === battle.extra.badgeID);
-
-      if (badge && chance(70)) {
-        player.badges.push(badge.id);
-        reward = `\n🏅 তুমি পেয়েছো ${badge.name}!`;
-      } else {
-        reward = "\n🎁 এবার Badge পাওয়া যায়নি। আবার চেষ্টা করো!";
-      }
-    }
-
-    send(
-      api,
-      battle.threadID,
-      `🏆 VICTORY!\n\n` +
-      `তুমি ${battle.enemy.species}-কে পরাজিত করেছো!\n` +
-      `💰 পুরস্কার: ${battle.mode === "gym" ? 250 : 100} Coins` +
-      reward +
-      `\n⭐ Trainer XP +60`
-    );
-  } else {
-    player.losses++;
-
-    if (own) own.hp = Math.max(1, Math.floor(own.maxHp * 0.1));
-
-    send(
-      api,
-      battle.threadID,
-      `💔 DEFEAT!\n\n${battle.enemy.species} তোমাকে হারিয়ে দিয়েছে।\n` +
-      `তোমার Pokémon-এর HP কমে গেছে। Heal করতে লিখো: p heal`
-    );
-  }
-
-  delete DB.battles[battle.id];
-  saveDB();
-}
-
-function executeMove(api, battle, player, moveIndex) {
-  const own = getOwnedPokemon(player, battle.ownUID);
-
-  if (!own || !battle.enemy) {
-    delete DB.battles[battle.id];
-    saveDB();
-    return;
-  }
-
-  const move = own.moves[moveIndex];
-
-  if (!move) {
-    return send(api, battle.threadID, "❌ ভুল Skill নির্বাচন!");
-  }
-
-  const result = calculateDamage(own, battle.enemy, move);
-  battle.enemyHP -= result.damage;
-
-  let report =
-    `⚔️ ROUND ${battle.round}\n\n` +
-    `🟦 ${own.nickname} ব্যবহার করেছে ${move.name}!\n` +
-    `💥 Damage: ${result.damage}`;
-
-  if (result.critical) report += "\n🔥 CRITICAL HIT!";
-  if (result.multiplier > 1) report += "\n💪 SUPER EFFECTIVE!";
-  if (result.multiplier < 1) report += "\n😵 NOT VERY EFFECTIVE!";
-
-  report +=
-    `\n\n🟥 ${battle.enemy.species}\n` +
-    `${makeBar(Math.max(0, battle.enemyHP), battle.enemyMaxHP)} ` +
-    `${Math.max(0, battle.enemyHP)}/${battle.enemyMaxHP}`;
-
-  if (battle.enemyHP <= 0) {
-    send(api, battle.threadID, report + "\n\n🏆 প্রতিপক্ষ পরাজিত!");
-    return endBattle(api, battle, true);
-  }
-
-  const enemyMove = {
-    name: "Enemy Attack",
-    power: 20 + Math.floor(battle.enemy.atk * 0.3),
-    type: battle.enemy.type?.[0] || "Normal"
-  };
-
-  const enemyResult = calculateDamage(battle.enemy, own, enemyMove);
-  own.hp -= enemyResult.damage;
-
-  report +=
-    `\n\n🟥 ${battle.enemy.species} পাল্টা আক্রমণ করেছে!\n` +
-    `💥 তোমার Damage: ${enemyResult.damage}\n` +
-    `🟦 ${own.nickname}\n` +
-    `${makeBar(Math.max(0, own.hp), own.maxHp)} ` +
-    `${Math.max(0, own.hp)}/${own.maxHp}`;
-
-  battle.round++;
-
-  if (own.hp <= 0) {
-    own.hp = 0;
-    send(api, battle.threadID, report + "\n\n💔 তোমার Pokémon পরাজিত!");
-    return endBattle(api, battle, false);
-  }
-
-  saveDB();
-
-  const moves = own.moves || [];
-  report +=
-    `\n\n🎯 পরের Skill নির্বাচন করো:\n` +
-    moves.map((m, i) => `${i + 1}. ${m.name} [Power ${m.power}]`).join("\n");
-
-  api.sendMessage(report, battle.threadID, (err, info) => {
-    if (!err) {
-      registerReply(global, info.messageID, {
-        action: "battle",
-        battleID: battle.id,
-        userID: battle.userID
-      });
-    }
-  });
+function getBadges(player) {
+  return player.badges.map(id => BADGES.find(b => b.id === id)).filter(Boolean);
 }
 
 module.exports = {
   config: {
     name: "pokemon",
     aliases: ["p", "pk", "pok"],
-    version: "3.0.0",
+    version: "4.0.0",
     author: "Pokémon World",
     countDown: 3,
     role: 0,
     shortDescription: "Pokémon World Ultimate",
-    longDescription: "Hunt, catch, battle, gym, badges and Pokémon collection.",
+    longDescription: "Hunt, catch, battle, gym, badges and collection.",
     category: "game",
-    guide: {
-      en:
-        "pokemon\n" +
-        "pokemon hunt\n" +
-        "pokemon catch\n" +
-        "pokemon pokedex [page]\n" +
-        "pokemon team\n" +
-        "pokemon team add [id]\n" +
-        "pokemon battle\n" +
-        "pokemon gym\n" +
-        "pokemon badge [page]\n" +
-        "pokemon profile\n" +
-        "pokemon heal\n" +
-        "pokemon top\n" +
-        "pokemon shop\n" +
-        "pokemon buy [ball|greatball|ultraball|bait]\n" +
-        "pokemon admin backup\n" +
-        "pokemon admin restore"
-    }
+    guide: "p help"
   },
 
-  onStart: async function ({ api, event, args, message, usersData }) {
+  onStart: async function ({ api, event, args }) {
     const userID = String(event.senderID);
     const threadID = event.threadID;
-    const name = event.senderName || "Trainer";
-    const player = getPlayer(userID, name);
-
+    const player = getPlayer(userID, event.senderName || "Trainer");
     const sub = String(args[0] || "help").toLowerCase();
 
     if (sub === "help") {
       return send(api, threadID,
-        `🌍 POKÉMON WORLD ULTIMATE\n\n` +
-        `🌲 p hunt — Pokémon খুঁজতে যাও\n` +
-        `🎯 p catch — Pokémon ধরো\n` +
-        `📖 p pk [page] — Pokédex\n` +
-        `👥 p team — তোমার Team\n` +
-        `⚔️ p battle — Wild Battle\n` +
-        `🏟️ p gym — Gym Challenge\n` +
-        `🏅 p bd — Badge Collection\n` +
-        `👤 p profile — Trainer Profile\n` +
-        `❤️ p heal — Pokémon Heal\n` +
-        `🏆 p top — Top Trainers\n` +
-        `🛒 p shop — Shop\n` +
-        `💰 p buy ball — Pokéball কিনো\n\n` +
-        `Reply করে Hunt ও Battle-এর সিদ্ধান্ত দিতে হবে।`
+        `🌍 POKÉMON WORLD ULTIMATE
+
+🌲 p hunt — Pokémon খুঁজো
+🎯 p catch — Catch নির্দেশনা
+📖 p pk [page] — Pokédex
+👥 p team — Team দেখো
+➕ p team add [ID] — Team-এ যোগ
+⚔️ p battle — Wild Battle
+🏟️ p gym — Gym Challenge
+🏅 p badge — Badge Collection
+👤 p profile — Profile
+❤️ p heal — সব Pokémon Heal
+🏆 p top — Top Trainers
+🛒 p shop — Shop
+💰 p buy ball/greatball/ultraball/bait
+
+Admin:
+p admin backup
+p admin restore
+p admin money [UID] [amount]
+p admin pokemon [UID] [name]
+p admin addpokemon [name] [type] [rarity]`
       );
     }
 
     if (sub === "hunt") {
       const now = Date.now();
-      if (now - player.lastHunt < CONFIG.huntCooldown) {
-        const left = Math.ceil((CONFIG.huntCooldown - (now - player.lastHunt)) / 1000);
-        return send(api, threadID, `⏳ আবার Hunt করতে ${left} সেকেন্ড অপেক্ষা করো।`);
-      }
+      const left = CONFIG.huntCooldown - (now - player.lastHunt);
+      if (left > 0) return send(api, threadID, `⏳ আবার Hunt করতে ${Math.ceil(left / 1000)} সেকেন্ড অপেক্ষা করো।`);
 
       player.lastHunt = now;
+      const region = getRegion();
 
-      const region = getRandomRegion();
-
-      if (chance(22)) {
+      if (chance(18)) {
         saveDB();
-        return send(api, threadID,
-          `🌲 তুমি ${region.name}-এ ঘুরে দেখলে...\n` +
-          `🍃 কিছু পায়ের ছাপ পাওয়া গেছে, কিন্তু Pokémon দেখা যায়নি!\n` +
-          `পরে আবার চেষ্টা করো।`
-        );
+        return send(api, threadID, `🌲 ${region.name}-এ Pokémon খুঁজলে, কিন্তু কাউকে পাওয়া গেল না! পরে আবার চেষ্টা করো।`);
       }
 
       const base = pickRegionPokemon(region);
-      const level = random(3, 12);
-      const wild = makePokemon(base.name, level);
-
-      if (!wild) return send(api, threadID, "❌ Pokémon তৈরি করা যায়নি।");
-
+      const wild = makePokemon(base.name, rand(3, 12));
       DB.activeHunts[userID] = {
-        pokemon: wild,
-        region: region.name,
-        expires: Date.now() + 60000
+        pokemon: wild, region: region.name,
+        expires: Date.now() + CONFIG.huntTime
       };
-
       saveDB();
 
       const body =
-        `🌲 ${region.name}\n\n` +
-        `⚠️ একটি Wild Pokémon দেখা গেছে!\n` +
-        `${wild.shiny ? "✨ SHINY POKÉMON!\n" : ""}` +
-        `${wild.nickname} [${wild.rarity}]\n` +
-        `Level: ${wild.level}\n` +
-        `HP: ${wild.hp}\n\n` +
-        `কী করবে?\n` +
-        `1 — Pokéball ছুঁড়বে\n` +
-        `2 — Bait ব্যবহার করবে\n` +
-        `3 — Sneak করে ধরার চেষ্টা করবে\n` +
-        `4 — পালিয়ে যাবে\n\n` +
-        `⏳ ৬০ সেকেন্ডের মধ্যে Reply করো।`;
+        `🌲 ${region.name}
 
-      api.sendMessage(body, threadID, (err, info) => {
-        if (!err) {
-          registerReply(global, info.messageID, {
-            action: "hunt",
-            userID
-          });
+⚠️ একটি Wild Pokémon দেখা গেছে!
+${wild.shiny ? "✨ SHINY POKÉMON!\n" : ""}${wild.species} [${wild.rarity}]
+Level: ${wild.level}
+HP: ${wild.hp}
+
+কী করবে?
+1 — Pokéball ছুঁড়বে
+2 — Great Ball ব্যবহার করবে
+3 — Ultra Ball ব্যবহার করবে
+4 — Bait ব্যবহার করবে
+5 — Sneak করবে
+6 — পালিয়ে যাবে
+
+⏳ ৬০ সেকেন্ডের মধ্যে এই মেসেজে Reply করো।`;
+
+      return api.sendMessage(body, threadID, (err, info) => {
+        if (!err && info?.messageID) {
+          registerReply(info.messageID, { action: "hunt", userID });
         }
       });
-
-      return;
     }
 
     if (sub === "catch") {
       const hunt = DB.activeHunts[userID];
       if (!hunt || hunt.expires < Date.now()) {
         delete DB.activeHunts[userID];
-        return send(api, threadID, "❌ কোনো Wild Pokémon নেই। আগে `p hunt` লেখো।");
+        saveDB();
+        return send(api, threadID, "❌ কোনো Wild Pokémon নেই। আগে p hunt লেখো।");
       }
-
-      return send(api, threadID,
-        `🎯 ${hunt.pokemon.species} ধরতে হলে Hunt-এর মেসেজে Reply করে 1, 2 অথবা 3 লেখো।`
-      );
+      return send(api, threadID, "🎯 Pokémon ধরতে Hunt-এর মেসেজে Reply করে 1–6 লেখো।");
     }
 
     if (sub === "pk" || sub === "pokedex") {
       const page = Math.max(1, parseInt(args[1]) || 1);
       const all = getAllPokemon();
       const pages = Math.max(1, Math.ceil(all.length / CONFIG.pageSize));
-      const selected = all.slice((page - 1) * CONFIG.pageSize, page * CONFIG.pageSize);
-
-      if (!selected.length) return send(api, threadID, "❌ এই পৃষ্ঠা নেই।");
-
-      let text =
-        `📖 POKÉDEX | PAGE ${page}/${pages}\n` +
-        `Collected: ${player.pokemons.length}\n\n`;
-
-      selected.forEach((p, i) => {
+      const list = all.slice((page - 1) * CONFIG.pageSize, page * CONFIG.pageSize);
+      if (!list.length) return send(api, threadID, "❌ এই পৃষ্ঠা নেই।");
+      let out = `📖 POKÉDEX ${page}/${pages}\nCollected: ${player.pokemons.length}\n\n`;
+      list.forEach((p, i) => {
         const caught = player.pokemons.some(x => x.species === p.name);
-        text += `${(page - 1) * CONFIG.pageSize + i + 1}. ${p.emoji} ${p.name}\n`;
-        text += `   ${p.type.join("/")} | ${p.rarity} ${caught ? "✅" : "❔"}\n`;
+        out += `${(page - 1) * CONFIG.pageSize + i + 1}. ${p.emoji} ${p.name}\n${p.type.join("/")} | ${p.rarity} ${caught ? "✅" : "❔"}\n`;
       });
-
-      text += `\nপরের পৃষ্ঠা: p pk ${Math.min(pages, page + 1)}`;
-      return send(api, threadID, text);
+      return send(api, threadID, out + `\nপরের পৃষ্ঠা: p pk ${Math.min(page + 1, pages)}`);
     }
 
     if (sub === "team") {
-      if (String(args[1]).toLowerCase() === "add") {
-        const uid = String(args[2] || "");
-        const pokemon = getOwnedPokemon(player, uid);
-
+      if (String(args[1] || "").toLowerCase() === "add") {
+        const pokemon = getOwnedPokemon(player, String(args[2] || ""));
         if (!pokemon) return send(api, threadID, "❌ Pokémon ID পাওয়া যায়নি।");
         if (player.team.includes(pokemon.uid)) return send(api, threadID, "এটি আগে থেকেই Team-এ আছে।");
-        if (player.team.length >= CONFIG.maxTeam) return send(api, threadID, "❌ Team পূর্ণ। সর্বোচ্চ ৬টি Pokémon রাখতে পারবে।");
-
+        if (player.team.length >= CONFIG.maxTeam) return send(api, threadID, "❌ Team পূর্ণ! সর্বোচ্চ ৬টি Pokémon।");
         player.team.push(pokemon.uid);
         saveDB();
         return send(api, threadID, `✅ ${pokemon.nickname} Team-এ যোগ হয়েছে!`);
       }
-
       const team = getTeam(player);
       if (!team.length) return send(api, threadID, "❌ Team খালি। আগে Pokémon ধরো!");
-
-      return send(api, threadID,
-        `👥 YOUR POKÉMON TEAM\n\n` +
-        team.map((p, i) => getPokemonText(p, i)).join("\n\n") +
-        `\n\nTeam পরিবর্তন: p team add [Pokémon ID]`
-      );
+      return send(api, threadID, "👥 YOUR TEAM\n\n" + team.map(pokemonText).join("\n\n"));
     }
 
     if (sub === "profile" || sub === "me") {
       return send(api, threadID,
-        `👤 TRAINER PROFILE\n\n` +
-        `Name: ${player.name}\n` +
-        `Level: ${player.level}\n` +
-        `XP: ${player.xp}/${player.level * 100}\n` +
-        `💰 Coins: ${player.money}\n` +
-        `Pokémon: ${player.pokemons.length}\n` +
-        `🏅 Badges: ${player.badges.length}\n` +
-        `⚔️ Wins: ${player.wins}\n` +
-        `💔 Losses: ${player.losses}\n` +
-        `Pokéball: ${player.balls}\n` +
-        `Great Ball: ${player.greatBalls}\n` +
-        `Ultra Ball: ${player.ultraBalls}\n` +
-        `Bait: ${player.bait}`
+        `👤 TRAINER PROFILE
+
+Name: ${player.name}
+Level: ${player.level}
+XP: ${player.xp}/${player.level * 100}
+💰 Coins: ${player.money}
+Pokémon: ${player.pokemons.length}
+🏅 Badges: ${player.badges.length}
+⚔️ Wins: ${player.wins}
+💔 Losses: ${player.losses}
+Pokéball: ${player.balls}
+Great Ball: ${player.greatBalls}
+Ultra Ball: ${player.ultraBalls}
+Bait: ${player.bait}`
       );
     }
 
-    if (sub === "bd" || sub === "badge") {
-      const badges = getBadgeList(player);
-      if (!badges.length) return send(api, threadID, "🏅 এখনো কোনো Badge নেই। Gym Challenge খেলো!");
-
-      const page = Math.max(1, parseInt(args[1]) || 1);
-      const pages = Math.max(1, Math.ceil(badges.length / CONFIG.pageSize));
-      const selected = badges.slice((page - 1) * CONFIG.pageSize, page * CONFIG.pageSize);
-
-      return send(api, threadID,
-        `🏅 BADGE COLLECTION ${page}/${pages}\n\n` +
-        selected.map((b, i) => `${i + 1}. ${b.emoji} ${b.name}\n   ${b.rarity} | Leader: ${b.leader}`).join("\n") +
-        `\n\nপরের পৃষ্ঠা: p bd ${Math.min(page + 1, pages)}`
-      );
+    if (sub === "badge" || sub === "bd") {
+      const badges = getBadges(player);
+      if (!badges.length) return send(api, threadID, "🏅 এখনো Badge নেই। p gym খেলো!");
+      return send(api, threadID, "🏅 YOUR BADGES\n\n" +
+        badges.map((b, i) => `${i + 1}. ${b.emoji} ${b.name} — ${b.leader}`).join("\n"));
     }
 
     if (sub === "heal") {
+      if (!player.pokemons.length) return send(api, threadID, "❌ তোমার Pokémon নেই!");
       if (player.money < 50) return send(api, threadID, "❌ Heal করতে ৫০ Coins লাগবে।");
-
       player.money -= 50;
-      player.pokemons.forEach(p => {
-        p.hp = p.maxHp;
-        p.status = null;
-      });
-
+      player.pokemons.forEach(p => { p.hp = p.maxHp; p.status = null; });
       saveDB();
-      return send(api, threadID, "❤️ তোমার সব Pokémon পুরো Heal হয়েছে! ৫০ Coins কাটা হয়েছে।");
+      return send(api, threadID, "❤️ সব Pokémon Heal হয়েছে! ৫০ Coins কাটা হয়েছে।");
     }
 
-    if (sub === "battle") {
+    if (sub === "battle" || sub === "gym") {
+      const now = Date.now();
+      const left = CONFIG.battleCooldown - (now - player.lastBattle);
+      if (left > 0) return send(api, threadID, `⏳ Battle করতে ${Math.ceil(left / 1000)} সেকেন্ড অপেক্ষা করো।`);
       const own = getActivePokemon(player);
-      if (!own) return send(api, threadID, "❌ আগে Pokémon ধরো!");
+      if (!own) return send(api, threadID, "❌ আগে Pokémon ধরো এবং Team-এ রাখো!");
+      if (own.hp <= 0) return send(api, threadID, "❌ Pokémon-এর HP শেষ! p heal করো।");
+      player.lastBattle = now;
 
-      const base = pickWildPokemon();
-      const enemy = makePokemon(base.name, Math.max(3, own.level + random(-2, 3)));
+      let enemy, mode = "wild", extra = {};
+      if (sub === "gym") {
+        const gym = GYMS[rand(0, GYMS.length - 1)];
+        const species = gym.pokemon[rand(0, gym.pokemon.length - 1)];
+        enemy = makePokemon(species, rand(8, 15));
+        mode = "gym";
+        extra = { leader: gym.name, badgeID: gym.badge, reward: gym.reward };
+      } else {
+        const base = pickWild();
+        enemy = makePokemon(base.name, Math.max(3, own.level + rand(-2, 3)));
+      }
 
-      return startBattle(api, threadID, userID, player, enemy, "wild");
-    }
+      const battleID = uid();
+      DB.battles[battleID] = {
+        id: battleID, threadID, userID, mode, ownUID: own.uid,
+        enemy, enemyHP: enemy.hp, enemyMaxHP: enemy.hp,
+        round: 1, extra, createdAt: Date.now()
+      };
+      saveDB();
 
-    if (sub === "gym" || sub === "gl") {
-      const leader = GYM_LEADERS[random(0, GYM_LEADERS.length - 1)];
-      const enemyName = leader.pokemon[random(0, leader.pokemon.length - 1)];
-      const enemy = makePokemon(enemyName, random(8, 15));
+      const intro = mode === "gym"
+        ? `🏟️ Gym Leader ${extra.leader}-এর Pokémon ${enemy.species} সামনে এসেছে!\n`
+        : `🌿 Wild Pokémon ${enemy.species} সামনে এসেছে!\n`;
 
-      const badge = BADGES.find(b => b.leader === leader.name);
-
-      send(api, threadID,
-        `🏟️ GYM LEADER CHALLENGE\n\n` +
-        `👑 Leader: ${leader.name}\n` +
-        `Type: ${leader.type}\n` +
-        `Enemy: ${enemy.name}\n` +
-        `Level: ${enemy.level}\n` +
-        `🏅 সম্ভাব্য Badge: ${badge ? badge.name : "Special Badge"}\n\n` +
-        `⚔️ Battle শুরু হচ্ছে...`
+      return api.sendMessage(
+        `${intro}\n🟦 ${own.nickname} Lv.${own.level}\n${bar(own.hp, own.maxHp)} ${own.hp}/${own.maxHp}\n\n🟥 ${enemy.species} Lv.${enemy.level}\n${bar(enemy.hp, enemy.maxHp)} ${enemy.hp}/${enemy.maxHp}\n\n🎯 Skill বেছে নাও:\n` +
+        own.moves.map((m, i) => `${i + 1}. ${m.name} [Power ${m.power}]`).join("\n") +
+        "\n\nএই মেসেজে Reply করো: 1 / 2 / 3",
+        threadID,
+        (err, info) => {
+          if (!err && info?.messageID) {
+            registerReply(info.messageID, { action: "battle", battleID, userID });
+          }
+        }
       );
-
-      return startBattle(api, threadID, userID, player, enemy, "gym", {
-        leader: leader.name,
-        badgeID: badge?.id || null
-      });
     }
 
     if (sub === "top") {
-      const top = Object.values(DB.players)
-        .sort((a, b) => (b.wins * 100 + b.pokemons.length * 10 + b.level) -
-                        (a.wins * 100 + a.pokemons.length * 10 + a.level))
-        .slice(0, 10);
-
+      const top = Object.values(DB.players).sort((a, b) =>
+        (b.wins * 100 + b.pokemons.length * 10 + b.level) -
+        (a.wins * 100 + a.pokemons.length * 10 + a.level)
+      ).slice(0, 10);
       if (!top.length) return send(api, threadID, "এখনো কোনো Trainer নেই!");
-
-      return send(api, threadID,
-        `🏆 TOP TRAINERS\n\n` +
-        top.map((p, i) =>
-          `${i + 1}. ${p.name}\n` +
-          `   Level ${p.level} | Wins ${p.wins} | Pokémon ${p.pokemons.length}`
-        ).join("\n\n")
-      );
+      return send(api, threadID, "🏆 TOP TRAINERS\n\n" +
+        top.map((p, i) => `${i + 1}. ${p.name}\nLevel ${p.level} | Wins ${p.wins} | Pokémon ${p.pokemons.length}`).join("\n\n"));
     }
 
     if (sub === "shop") {
       return send(api, threadID,
-        `🛒 POKÉMON SHOP\n\n` +
-        `1. Pokéball — ৫০ Coins\n` +
-        `2. Great Ball — ১৫০ Coins\n` +
-        `3. Ultra Ball — ৪০০ Coins\n` +
-        `4. Bait — ১০০ Coins\n\n` +
-        `কিনতে লিখো:\n` +
-        `p buy ball\n` +
-        `p buy greatball\n` +
-        `p buy ultraball\n` +
-        `p buy bait`
+        `🛒 POKÉMON SHOP
+
+1. Pokéball — ৫০ Coins
+2. Great Ball — ১৫০ Coins
+3. Ultra Ball — ৪০০ Coins
+4. Bait — ১০০ Coins
+
+কিনতে:
+p buy ball
+p buy greatball
+p buy ultraball
+p buy bait`
       );
     }
 
     if (sub === "buy") {
-      const item = String(args[1] || "").toLowerCase();
       const items = {
         ball: { price: 50, field: "balls", name: "Pokéball" },
         greatball: { price: 150, field: "greatBalls", name: "Great Ball" },
         ultraball: { price: 400, field: "ultraBalls", name: "Ultra Ball" },
         bait: { price: 100, field: "bait", name: "Bait" }
       };
-
-      const selected = items[item];
-      if (!selected) return send(api, threadID, "❌ p buy ball / greatball / ultraball / bait");
-
-      if (player.money < selected.price) return send(api, threadID, "❌ পর্যাপ্ত Coins নেই!");
-
-      player.money -= selected.price;
-      player[selected.field]++;
+      const item = items[String(args[1] || "").toLowerCase()];
+      if (!item) return send(api, threadID, "❌ p buy ball / greatball / ultraball / bait");
+      if (player.money < item.price) return send(api, threadID, "❌ পর্যাপ্ত Coins নেই!");
+      player.money -= item.price;
+      player[item.field]++;
       saveDB();
-
-      return send(api, threadID,
-        `✅ ${selected.name} কেনা হয়েছে!\n💰 বাকি Coins: ${player.money}`
-      );
+      return send(api, threadID, `✅ ${item.name} কেনা হয়েছে!\n💰 বাকি Coins: ${player.money}`);
     }
 
     if (sub === "admin") {
       if (!isAdmin(userID)) return send(api, threadID, "⛔ Admin only!");
-
       const action = String(args[1] || "").toLowerCase();
 
       if (action === "backup") {
         try {
           fs.writeFileSync(BACKUP_FILE, JSON.stringify(DB, null, 2));
           return send(api, threadID, "✅ Database backup তৈরি হয়েছে।");
-        } catch (e) {
-          return send(api, threadID, "❌ Backup failed: " + e.message);
-        }
+        } catch (e) { return send(api, threadID, "❌ Backup failed: " + e.message); }
       }
 
       if (action === "restore") {
@@ -1009,132 +673,147 @@ module.exports = {
           if (!fs.existsSync(BACKUP_FILE)) return send(api, threadID, "❌ Backup file পাওয়া যায়নি!");
           DB = { ...defaultDB(), ...JSON.parse(fs.readFileSync(BACKUP_FILE, "utf8")) };
           saveDB();
-          return send(api, threadID, "✅ Backup থেকে Database restore হয়েছে!");
-        } catch (e) {
-          return send(api, threadID, "❌ Restore failed: " + e.message);
-        }
+          return send(api, threadID, "✅ Database restore হয়েছে!");
+        } catch (e) { return send(api, threadID, "❌ Restore failed: " + e.message); }
       }
 
       if (action === "money") {
         const target = String(args[2] || "");
-        const amount = parseInt(args[3]);
-
-        if (!DB.players[target] || !Number.isFinite(amount)) {
+        const amount = Number(args[3]);
+        if (!DB.players[target] || !Number.isFinite(amount) || amount === 0) {
           return send(api, threadID, "ব্যবহার: p admin money [UID] [amount]");
         }
-
-        DB.players[target].money += amount;
+        DB.players[target].money = Math.max(0, DB.players[target].money + amount);
         saveDB();
         return send(api, threadID, "✅ Player balance updated!");
       }
 
       if (action === "pokemon") {
         const target = String(args[2] || "");
-        const species = args.slice(3).join(" ");
-        const base = getPokemon(species);
-
-        if (!DB.players[target] || !base) {
-          return send(api, threadID, "ব্যবহার: p admin pokemon [UID] [Pokémon Name]");
-        }
-
+        const base = getPokemon(args.slice(3).join(" "));
+        if (!DB.players[target] || !base) return send(api, threadID, "ব্যবহার: p admin pokemon [UID] [Pokémon Name]");
         const pokemon = makePokemon(base.name, 10);
-        addPokemon(DB.players[target], pokemon);
+        if (!addPokemon(DB.players[target], pokemon)) return send(api, threadID, "❌ Player storage পূর্ণ!");
         saveDB();
-
         return send(api, threadID, `✅ ${base.name} যোগ করা হয়েছে!`);
       }
 
       if (action === "addpokemon") {
-        const name = cleanText(args[2]);
-        const type = cleanText(args[3] || "Normal");
-        const rarity = cleanText(args[4] || "Common");
-
+        const name = clean(args[2]);
+        const type = clean(args[3] || "Normal");
+        const rarity = clean(args[4] || "Common");
         if (!name || !TYPES[type] || !RARITY[rarity]) {
           return send(api, threadID, "ব্যবহার: p admin addpokemon [name] [type] [rarity]");
         }
-
         if (getPokemon(name)) return send(api, threadID, "এই Pokémon আগে থেকেই আছে!");
-
         DB.customPokemon.push({
-          id: 1000 + DB.customPokemon.length,
-          name,
-          type: [type],
-          rarity,
-          hp: 60,
-          atk: 60,
-          def: 60,
-          spd: 60,
-          emoji: "✨"
+          id: 1000 + DB.customPokemon.length, name,
+          type: [type], rarity, hp: 60, atk: 60, def: 60, spd: 60, emoji: "✨"
         });
-
         saveDB();
         return send(api, threadID, `✅ নতুন Pokémon যোগ হয়েছে: ${name}`);
       }
 
       return send(api, threadID,
-        `🛠️ ADMIN COMMANDS\n\n` +
-        `p admin backup\n` +
-        `p admin restore\n` +
-        `p admin money [UID] [amount]\n` +
-        `p admin pokemon [UID] [name]\n` +
-        `p admin addpokemon [name] [type] [rarity]`
+        `🛠️ ADMIN COMMANDS
+p admin backup
+p admin restore
+p admin money [UID] [amount]
+p admin pokemon [UID] [name]
+p admin addpokemon [name] [type] [rarity]`
       );
     }
 
-    return send(api, threadID, "❌ Command পাওয়া যায়নি। সাহায্যের জন্য `p help` লেখো।");
+    return send(api, threadID, "❌ Command পাওয়া যায়নি। p help লেখো।");
   },
-
-  onReply: async function ({ api, event, Reply }) {
+   onReply: async function ({ api, event, Reply }) {
     const userID = String(event.senderID);
     const threadID = event.threadID;
     const player = DB.players[userID];
 
-    if (!player) return;
+    if (!player) {
+      return send(api, threadID, "❌ আগে p help দিয়ে Game শুরু করো।");
+    }
 
+    if (!Reply || !Reply.action) {
+      return send(api, threadID, "❌ Reply data পাওয়া যায়নি। আবার চেষ্টা করো।");
+    }
+
+    // অন্য Trainer যেন অন্যের Hunt বা Battle নিয়ন্ত্রণ করতে না পারে
     if (String(Reply.userID) !== userID) {
       return send(api, threadID, "❌ এই সিদ্ধান্তটি অন্য Trainer-এর জন্য!");
     }
 
+    const choice = String(event.body || "").trim();
+
+    // =====================================
+    // HUNT / CATCH SYSTEM
+    // =====================================
     if (Reply.action === "hunt") {
       const hunt = DB.activeHunts[userID];
 
       if (!hunt || hunt.expires < Date.now()) {
         delete DB.activeHunts[userID];
         saveDB();
-        return send(api, threadID, "⏳ Wild Pokémon পালিয়ে গেছে!");
+        return send(api, threadID, "⏳ Wild Pokémon পালিয়ে গেছে! আবার p hunt লেখো।");
       }
 
-      const choice = String(event.body || "").trim();
       const wild = hunt.pokemon;
 
-      if (choice === "4") {
+      if (choice === "6") {
         delete DB.activeHunts[userID];
         saveDB();
         return send(api, threadID, `🏃 তুমি ${wild.species}-কে ছেড়ে চলে গেলে!`);
       }
 
-      let ballBonus = 0;
-      let chanceValue = 0;
+      const now = Date.now();
+      const left = CONFIG.catchCooldown - (now - (player.lastCatch || 0));
+
+      if (left > 0) {
+        return send(api, threadID, `⏳ আবার চেষ্টা করতে ${Math.ceil(left / 1000)} সেকেন্ড অপেক্ষা করো।`);
+      }
+
+      let bonus = 0;
       let usedItem = "";
 
       if (choice === "1") {
-        if (player.balls <= 0) return send(api, threadID, "❌ তোমার Pokéball নেই! p buy ball");
+        if (player.balls <= 0) {
+          return send(api, threadID, "❌ তোমার Pokéball নেই! কিনতে p buy ball লেখো।");
+        }
         player.balls--;
-        ballBonus = 0;
+        bonus = 0;
         usedItem = "Pokéball";
       } else if (choice === "2") {
-        if (player.bait <= 0) return send(api, threadID, "❌ তোমার Bait নেই! p buy bait");
-        player.bait--;
-        ballBonus = 15;
-        usedItem = "Bait";
+        if (player.greatBalls <= 0) {
+          return send(api, threadID, "❌ তোমার Great Ball নেই! কিনতে p buy greatball লেখো।");
+        }
+        player.greatBalls--;
+        bonus = 15;
+        usedItem = "Great Ball";
       } else if (choice === "3") {
-        ballBonus = 10;
+        if (player.ultraBalls <= 0) {
+          return send(api, threadID, "❌ তোমার Ultra Ball নেই! কিনতে p buy ultraball লেখো।");
+        }
+        player.ultraBalls--;
+        bonus = 30;
+        usedItem = "Ultra Ball";
+      } else if (choice === "4") {
+        if (player.bait <= 0) {
+          return send(api, threadID, "❌ তোমার Bait নেই! কিনতে p buy bait লেখো।");
+        }
+        player.bait--;
+        bonus = 10;
+        usedItem = "Bait";
+      } else if (choice === "5") {
+        bonus = 5;
         usedItem = "Sneak";
       } else {
-        return send(api, threadID, "❌ 1, 2, 3 অথবা 4 লিখে Reply করো।");
+        return send(api, threadID, "❌ 1, 2, 3, 4, 5 অথবা 6 লিখে Reply করো।");
       }
 
-      const rarityPenalty = {
+      player.lastCatch = now;
+
+      const penalty = {
         Common: 0,
         Uncommon: 5,
         Rare: 15,
@@ -1144,55 +823,240 @@ module.exports = {
         Secret: 60
       }[wild.rarity] || 0;
 
-      chanceValue = Math.max(5, Math.min(90, 65 + ballBonus - rarityPenalty));
+      const catchChance = Math.max(5, Math.min(95, 65 + bonus - penalty));
 
-      if (chance(chanceValue)) {
+      if (chance(catchChance)) {
         if (!addPokemon(player, wild)) {
-          return send(api, threadID, "❌ তোমার Pokémon storage পূর্ণ!");
+          // Storage পূর্ণ হলে ব্যবহৃত Item ফেরত
+          if (choice === "1") player.balls++;
+          if (choice === "2") player.greatBalls++;
+          if (choice === "3") player.ultraBalls++;
+          if (choice === "4") player.bait++;
+          saveDB();
+          return send(api, threadID, "❌ Pokémon Storage পূর্ণ! সর্বোচ্চ ১০০টি Pokémon রাখতে পারবে।");
         }
 
         delete DB.activeHunts[userID];
+        player.money += wild.rarity === "Secret" ? 500 : wild.rarity === "Mythical" ? 300 : 25;
         saveDB();
 
         return sendCard(
           api,
           threadID,
           wild,
-          "POKÉMON CAUGHT!",
-          `🎉 অভিনন্দন! ${wild.species} ধরা পড়েছে!\n` +
-          `🎯 ব্যবহার: ${usedItem}\n` +
-          `📊 Catch Chance: ${chanceValue}%\n` +
-          `✨ Shiny: ${wild.shiny ? "YES!" : "No"}\n` +
-          `🆔 ID: ${wild.uid.slice(0, 6)}`
+          "POKEMON CAUGHT!",
+          `🎉 অভিনন্দন! Pokémon ধরা পড়েছে!
+
+${wild.shiny ? "✨ SHINY POKÉMON!\n" : ""}🐾 Pokémon: ${wild.species}
+⭐ Rarity: ${wild.rarity}
+📊 Level: ${wild.level}
+🎯 Used: ${usedItem}
+🎲 Catch Chance: ${catchChance}%
+🆔 ID: ${wild.uid.slice(0, 6)}
+
+💰 Catch Reward যোগ হয়েছে!
+👥 Team-এ স্বয়ংক্রিয়ভাবে যোগ হয়েছে (জায়গা থাকলে)।`
         );
       }
 
-      const escaped = chance(25);
+      const escaped = chance(20);
       if (escaped) delete DB.activeHunts[userID];
 
       saveDB();
 
-      return send(api, threadID,
-        `❌ ${wild.species} ধরা পড়েনি!\n` +
-        `🎯 Catch Chance: ${chanceValue}%\n` +
-        `${escaped ? "🏃 Pokémon পালিয়ে গেছে!" : "⚠️ Pokémon এখনো কাছেই আছে। আবার চেষ্টা করো!"}`
+      return send(
+        api,
+        threadID,
+        `❌ ${wild.species} ধরা পড়েনি!
+
+🎯 Catch Chance: ${catchChance}%
+🎒 ব্যবহৃত: ${usedItem}
+
+${escaped
+  ? "🏃 Pokémon পালিয়ে গেছে! আবার Hunt করো।"
+  : "⚠️ Pokémon এখনো কাছেই আছে। Hunt মেসেজে আবার Reply করে চেষ্টা করো!"}`
       );
     }
 
+    // =====================================
+    // BATTLE SYSTEM
+    // =====================================
     if (Reply.action === "battle") {
       const battle = DB.battles[Reply.battleID];
 
-      if (!battle || battle.userID !== userID) {
-        return send(api, threadID, "❌ Battle আর চালু নেই!");
+      if (!battle || String(battle.userID) !== userID) {
+        return send(api, threadID, "❌ এই Battle আর চালু নেই!");
       }
 
-      const choice = parseInt(String(event.body || "").trim());
-
-      if (![1, 2, 3].includes(choice)) {
-        return send(api, threadID, "❌ Skill নির্বাচন করতে 1, 2 অথবা 3 লিখো।");
+      if (String(battle.threadID) !== String(threadID)) {
+        return send(api, threadID, "❌ এই Battle অন্য Chat-এ শুরু হয়েছিল।");
       }
 
-      return executeMove(api, battle, player, choice - 1);
+      const moveIndex = Number(choice) - 1;
+
+      if (!Number.isInteger(moveIndex) || moveIndex < 0 || moveIndex > 2) {
+        return send(api, threadID, "❌ Skill নির্বাচন করতে 1, 2 অথবা 3 লিখে Reply করো।");
+      }
+
+      const own = getOwnedPokemon(player, battle.ownUID);
+
+      if (!own || !battle.enemy) {
+        delete DB.battles[battle.id];
+        saveDB();
+        return send(api, threadID, "❌ Battle data পাওয়া যায়নি!");
+      }
+
+      if (own.hp <= 0) {
+        delete DB.battles[battle.id];
+        saveDB();
+        return send(api, threadID, "💔 তোমার Pokémon-এর HP শেষ! p heal লেখো।");
+      }
+
+      const move = own.moves[moveIndex];
+
+      if (!move) {
+        return send(api, threadID, "❌ এই Skill পাওয়া যায়নি!");
+      }
+
+      // Battle শেষ করার ফাংশন
+      const finishBattle = (won) => {
+        if (won) {
+          player.wins++;
+
+          const reward = battle.mode === "gym"
+            ? Number(battle.extra.reward || 250)
+            : 100;
+
+          player.money += reward;
+          const levels = addXP(player, 60);
+
+          own.xp = (own.xp || 0) + 50;
+          own.hp = Math.max(1, Math.floor(own.maxHp * 0.35));
+
+          let badgeText = "";
+
+          if (battle.mode === "gym" && battle.extra.badgeID) {
+            const badge = BADGES.find(b => b.id === battle.extra.badgeID);
+
+            if (badge && !player.badges.includes(badge.id)) {
+              if (chance(70)) {
+                player.badges.push(badge.id);
+                badgeText = `\n🏅 নতুন Badge: ${badge.emoji} ${badge.name}`;
+              } else {
+                badgeText = "\n🎁 এবার Badge পাওয়া যায়নি। আবার Gym Challenge খেলো!";
+              }
+            } else if (badge) {
+              badgeText = "\n🏅 এই Badge তোমার আগে থেকেই আছে!";
+            }
+          }
+
+          delete DB.battles[battle.id];
+          saveDB();
+
+          return send(
+            api,
+            threadID,
+            `🏆 VICTORY! তুমি জিতে গেছো!
+
+⚔️ পরাজিত: ${battle.enemy.species}
+💰 Reward: ${reward} Coins
+⭐ Trainer XP: +60
+🐾 Pokémon XP: +50
+${levels ? `🎉 Level Up: ${player.level}` : ""}
+${badgeText}
+
+❤️ ${own.nickname}-এর HP: ${own.hp}/${own.maxHp}`
+          );
+        }
+
+        player.losses++;
+        own.hp = Math.max(1, Math.floor(own.maxHp * 0.1));
+
+        delete DB.battles[battle.id];
+        saveDB();
+
+        return send(
+          api,
+          threadID,
+          `💔 DEFEAT!
+
+${battle.enemy.species} তোমাকে হারিয়ে দিয়েছে।
+
+📉 Loss +1
+❤️ ${own.nickname}-এর HP: ${own.hp}/${own.maxHp}
+
+আবার Battle করার আগে p heal লেখো।`
+        );
+      };
+
+      // নিজের Pokémon-এর আক্রমণ
+      const result = damage(own, battle.enemy, move);
+      battle.enemyHP -= result.value;
+
+      let report =
+        `⚔️ ROUND ${battle.round}
+
+🟦 ${own.nickname} ব্যবহার করেছে ${move.name}!
+💥 Damage: ${result.value}`;
+
+      if (result.critical) report += "\n🔥 CRITICAL HIT!";
+      if (result.mult > 1) report += "\n💪 SUPER EFFECTIVE!";
+      if (result.mult < 1) report += "\n😵 NOT VERY EFFECTIVE!";
+
+      report +=
+        `\n\n🟥 ${battle.enemy.species}
+${bar(battle.enemyHP, battle.enemyMaxHP)}
+HP: ${Math.max(0, battle.enemyHP)}/${battle.enemyMaxHP}`;
+
+      if (battle.enemyHP <= 0) {
+        send(api, threadID, report + "\n\n🏆 প্রতিপক্ষ পরাজিত!");
+        return finishBattle(true);
+      }
+
+      // Enemy-এর পাল্টা আক্রমণ
+      const enemyMove = {
+        name: "Enemy Attack",
+        power: 20 + Math.floor(battle.enemy.atk * 0.3),
+        type: battle.enemy.type?.[0] || "Normal"
+      };
+
+      const enemyResult = damage(battle.enemy, own, enemyMove);
+      own.hp -= enemyResult.value;
+
+      report +=
+        `\n\n🟥 ${battle.enemy.species} পাল্টা আক্রমণ করেছে!
+💥 Damage: ${enemyResult.value}
+
+🟦 ${own.nickname}
+${bar(own.hp, own.maxHp)}
+HP: ${Math.max(0, own.hp)}/${own.maxHp}`;
+
+      if (own.hp <= 0) {
+        own.hp = 0;
+        send(api, threadID, report + "\n\n💔 তোমার Pokémon পরাজিত!");
+        return finishBattle(false);
+      }
+
+      battle.round++;
+      saveDB();
+
+      report +=
+        `\n\n🎯 পরের Skill নির্বাচন করো:
+${own.moves.map((m, i) => `${i + 1}. ${m.name} [Power ${m.power}]`).join("\n")}
+
+এই মেসেজে Reply করো: 1 / 2 / 3`;
+
+      return api.sendMessage(report, threadID, (err, info) => {
+        if (!err && info?.messageID) {
+          registerReply(info.messageID, {
+            action: "battle",
+            battleID: battle.id,
+            userID
+          });
+        }
+      });
     }
+
+    return send(api, threadID, "❌ এই Reply-এর কোনো Action পাওয়া যায়নি।");
   }
-};
+}; 
