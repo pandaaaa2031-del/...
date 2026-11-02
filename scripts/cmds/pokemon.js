@@ -26,7 +26,7 @@ const CONFIG = {
   battleCooldown: 15000,
   catchCooldown: 3000,
   huntTime: 60000,
-  adminIDs: []
+  adminIDs: [61592853883908]
 };
 
 const TYPES = {
